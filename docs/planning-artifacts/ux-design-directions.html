@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>xu-workflow — Design Directions</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Geist', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: #09090b; color: #f4f4f5; }
+
+  /* NAV */
+  nav { position: fixed; top: 0; left: 0; right: 0; z-index: 100; background: #09090b; border-bottom: 1px solid #27272a; padding: 0 24px; height: 52px; display: flex; align-items: center; gap: 8px; overflow-x: auto; }
+  nav a { color: #a1a1aa; font-size: 13px; text-decoration: none; padding: 6px 12px; border-radius: 6px; white-space: nowrap; transition: all .15s; }
+  nav a:hover { background: #27272a; color: #f4f4f5; }
+  nav a.active { background: #3f3f46; color: #f4f4f5; }
+  nav .logo { font-size: 13px; font-weight: 600; color: #60a5fa; margin-right: 16px; white-space: nowrap; }
+
+  /* SECTIONS */
+  section { display: none; padding-top: 52px; min-height: 100vh; }
+  section.active { display: flex; flex-direction: column; }
+
+  /* DIRECTION HEADER */
+  .dir-header { padding: 32px 40px 20px; border-bottom: 1px solid #27272a; }
+  .dir-header h2 { font-size: 18px; font-weight: 600; margin-bottom: 4px; }
+  .dir-header p { font-size: 13px; color: #a1a1aa; }
+  .dir-header .tags { display: flex; gap: 6px; margin-top: 10px; }
+  .tag { font-size: 11px; padding: 2px 8px; border-radius: 4px; border: 1px solid #3f3f46; color: #a1a1aa; }
+
+  /* ==================== SHARED COMPONENTS ==================== */
+  .badge { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 500; padding: 2px 7px; border-radius: 4px; }
+  .badge.idle { background: #3f3f46; color: #a1a1aa; }
+  .badge.working { background: #1d4ed840; color: #60a5fa; border: 1px solid #1d4ed860; }
+  .badge.done { background: #05966940; color: #34d399; border: 1px solid #05966960; }
+  .badge.error { background: #dc262640; color: #f87171; border: 1px solid #dc262660; }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .dot.pulse { animation: pulse 1.5s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:.3; } }
+
+  /* ==================== DIRECTION A — Pipeline Horizontal ==================== */
+  #dir-a .mockup { flex: 1; display: flex; flex-direction: column; }
+  #dir-a .topbar { padding: 10px 16px; border-bottom: 1px solid #27272a; display: flex; align-items: center; gap: 12px; }
+  #dir-a .topbar select { background: #18181b; border: 1px solid #3f3f46; color: #f4f4f5; font-size: 13px; padding: 5px 10px; border-radius: 6px; cursor: pointer; }
+  #dir-a .topbar .run-info { margin-left: auto; font-size: 12px; color: #a1a1aa; }
+  #dir-a .main { flex: 1; display: flex; overflow: hidden; }
+  #dir-a .diagram-area { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 32px; padding: 32px; }
+  #dir-a .pipeline { display: flex; align-items: center; gap: 0; }
+  #dir-a .agent-node { background: #18181b; border: 1px solid #3f3f46; border-radius: 10px; padding: 14px 18px; min-width: 120px; text-align: center; position: relative; }
+  #dir-a .agent-node.working { border-color: #3b82f6; box-shadow: 0 0 0 1px #3b82f620, 0 4px 16px #3b82f620; }
+  #dir-a .agent-node.done { border-color: #10b981; }
+  #dir-a .agent-node.error { border-color: #ef4444; box-shadow: 0 0 0 1px #ef444420; }
+  #dir-a .agent-node .name { font-size: 13px; font-weight: 500; margin-bottom: 6px; }
+  #dir-a .agent-node .engine { font-size: 10px; color: #71717a; margin-bottom: 8px; }
+  #dir-a .edge { width: 40px; height: 2px; background: #3f3f46; position: relative; }
+  #dir-a .edge.active { background: #3b82f6; }
+  #dir-a .edge::after { content: ''; position: absolute; right: -6px; top: -4px; border: 5px solid transparent; border-left-color: inherit; }
+  #dir-a .edge.active::after { border-left-color: #3b82f6; }
+  #dir-a .bubble { background: #1e3a5f; border: 1px solid #3b82f660; border-radius: 8px; padding: 8px 12px; font-size: 12px; color: #93c5fd; max-width: 300px; text-align: center; }
+  #dir-a .sidebar { width: 320px; border-left: 1px solid #27272a; display: flex; flex-direction: column; }
+  #dir-a .sidebar-header { padding: 10px 14px; border-bottom: 1px solid #27272a; font-size: 12px; font-weight: 500; color: #a1a1aa; }
+  #dir-a .sidebar-content { flex: 1; overflow-y: auto; padding: 12px; font-size: 12px; font-family: 'JetBrains Mono', 'Fira Code', monospace; line-height: 1.6; color: #a1a1aa; }
+  #dir-a .sidebar-content .log-line { padding: 2px 0; }
+  #dir-a .sidebar-content .log-line.highlight { color: #60a5fa; }
+  #dir-a .sidebar-content .log-line.success { color: #34d399; }
+  #dir-a .sidebar-content .log-line.err { color: #f87171; }
+  #dir-a .launch-bar { border-top: 1px solid #27272a; padding: 12px 16px; display: flex; gap: 10px; align-items: flex-end; }
+  #dir-a .launch-bar textarea { flex: 1; background: #18181b; border: 1px solid #3f3f46; color: #f4f4f5; font-size: 13px; padding: 8px 12px; border-radius: 8px; resize: none; height: 56px; font-family: inherit; }
+  #dir-a .launch-bar textarea:focus { outline: none; border-color: #3b82f6; }
+  #dir-a .launch-bar button { background: #3b82f6; color: white; border: none; padding: 0 18px; height: 56px; border-radius: 8px; font-size: 13px; font-weight: 500; cursor: pointer; white-space: nowrap; }
+
+  /* ==================== DIRECTION B — Stage Columns ==================== */
+  #dir-b .mockup { flex: 1; display: flex; flex-direction: column; }
+  #dir-b .topbar { padding: 10px 16px; border-bottom: 1px solid #27272a; display: flex; align-items: center; gap: 12px; }
+  #dir-b .topbar select { background: #18181b; border: 1px solid #3f3f46; color: #f4f4f5; font-size: 13px; padding: 5px 10px; border-radius: 6px; }
+  #dir-b .stages-header { display: flex; border-bottom: 1px solid #27272a; }
+  #dir-b .stage-col-head { flex: 1; padding: 8px 14px; font-size: 12px; font-weight: 500; color: #a1a1aa; border-right: 1px solid #27272a; display: flex; align-items: center; gap: 8px; }
+  #dir-b .stage-col-head:last-child { border-right: none; }
+  #dir-b .stage-col-head.working { color: #60a5fa; background: #1e3a5f20; }
+  #dir-b .stage-col-head.done { color: #34d399; background: #05966920; }
+  #dir-b .main { flex: 1; display: flex; overflow: hidden; }
+  #dir-b .stages-body { flex: 1; display: flex; overflow: hidden; }
+  #dir-b .stage-col { flex: 1; border-right: 1px solid #27272a; padding: 12px; overflow-y: auto; }
+  #dir-b .stage-col:last-child { border-right: none; }
+  #dir-b .stage-step { background: #18181b; border: 1px solid #3f3f46; border-radius: 6px; padding: 8px 10px; margin-bottom: 6px; font-size: 12px; }
+  #dir-b .stage-step .step-name { color: #f4f4f5; margin-bottom: 4px; }
+  #dir-b .stage-step .step-meta { color: #71717a; font-size: 11px; }
+  #dir-b .stage-step.done { border-color: #10b98140; }
+  #dir-b .stage-step.working { border-color: #3b82f680; background: #1e3a5f20; }
+  #dir-b .stage-step.error { border-color: #ef444460; background: #dc262620; }
+  #dir-b .sidebar { width: 280px; border-left: 1px solid #27272a; display: flex; flex-direction: column; }
+  #dir-b .sidebar-header { padding: 10px 14px; border-bottom: 1px solid #27272a; font-size: 12px; font-weight: 500; color: #a1a1aa; }
+  #dir-b .sidebar-content { flex: 1; overflow-y: auto; padding: 12px; font-size: 11px; font-family: monospace; line-height: 1.6; color: #71717a; }
+  #dir-b .launch-bar { border-top: 1px solid #27272a; padding: 12px 16px; display: flex; gap: 10px; align-items: flex-end; }
+  #dir-b .launch-bar textarea { flex: 1; background: #18181b; border: 1px solid #3f3f46; color: #f4f4f5; font-size: 13px; padding: 8px 12px; border-radius: 8px; resize: none; height: 52px; font-family: inherit; }
+  #dir-b .launch-bar button { background: #3b82f6; color: white; border: none; padding: 0 16px; height: 52px; border-radius: 8px; font-size: 13px; font-weight: 500; cursor: pointer; }
+
+  /* ==================== DIRECTION C — Cards Spacieux ==================== */
+  #dir-c .mockup { flex: 1; display: flex; flex-direction: column; background: #0c0c0e; }
+  #dir-c .topbar { padding: 12px 24px; border-bottom: 1px solid #27272a; display: flex; align-items: center; gap: 16px; }
+  #dir-c .topbar .wf-selector { display: flex; align-items: center; gap: 8px; background: #18181b; border: 1px solid #3f3f46; border-radius: 8px; padding: 6px 12px; font-size: 13px; cursor: pointer; }
+  #dir-c .topbar .wf-selector span { color: #f4f4f5; }
+  #dir-c .topbar .wf-selector small { color: #71717a; }
+  #dir-c .main { flex: 1; display: flex; }
+  #dir-c .diagram-area { flex: 1; padding: 40px; overflow-y: auto; }
+  #dir-c .cards-pipeline { display: flex; flex-direction: column; gap: 0; max-width: 560px; margin: 0 auto; }
+  #dir-c .agent-card { background: #18181b; border: 1px solid #3f3f46; border-radius: 12px; padding: 20px 24px; position: relative; }
+  #dir-c .agent-card.working { border-color: #3b82f6; background: #18181b; box-shadow: 0 0 24px #3b82f615; }
+  #dir-c .agent-card.done { border-color: #10b98140; opacity: .7; }
+  #dir-c .agent-card.idle { opacity: .45; }
+  #dir-c .agent-card .card-top { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 12px; }
+  #dir-c .agent-card .agent-name { font-size: 15px; font-weight: 600; }
+  #dir-c .agent-card .agent-engine { font-size: 11px; color: #71717a; margin-top: 2px; }
+  #dir-c .agent-card .steps-list { display: flex; flex-direction: column; gap: 4px; }
+  #dir-c .agent-card .step-item { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #71717a; }
+  #dir-c .agent-card .step-item.done { color: #34d399; }
+  #dir-c .agent-card .step-item.working { color: #60a5fa; }
+  #dir-c .agent-card .step-check { width: 14px; height: 14px; border-radius: 50%; border: 1.5px solid #3f3f46; display: flex; align-items: center; justify-content: center; font-size: 9px; flex-shrink: 0; }
+  #dir-c .agent-card .step-check.done { border-color: #10b981; background: #10b98120; color: #34d399; }
+  #dir-c .agent-card .step-check.working { border-color: #3b82f6; background: #3b82f620; }
+  #dir-c .connector { display: flex; align-items: center; justify-content: center; height: 28px; }
+  #dir-c .connector .line { width: 2px; height: 100%; background: #3f3f46; }
+  #dir-c .connector .line.active { background: #3b82f6; }
+  #dir-c .bubble-box { background: #1e3a5f40; border: 1px solid #3b82f640; border-radius: 8px; padding: 8px 12px; margin-top: 10px; font-size: 12px; color: #93c5fd; }
+  #dir-c .sidebar { width: 300px; border-left: 1px solid #27272a; display: flex; flex-direction: column; }
+  #dir-c .sidebar-header { padding: 12px 16px; border-bottom: 1px solid #27272a; font-size: 12px; font-weight: 500; color: #a1a1aa; display: flex; justify-content: space-between; }
+  #dir-c .sidebar-content { flex: 1; overflow-y: auto; padding: 12px; font-size: 11px; font-family: monospace; line-height: 1.7; color: #71717a; }
+  #dir-c .launch-bar { border-top: 1px solid #27272a; padding: 16px 24px; display: flex; gap: 12px; align-items: flex-end; }
+  #dir-c .launch-bar textarea { flex: 1; background: #18181b; border: 1px solid #3f3f46; color: #f4f4f5; font-size: 13px; padding: 10px 14px; border-radius: 10px; resize: none; height: 60px; font-family: inherit; }
+  #dir-c .launch-bar button { background: #3b82f6; color: white; border: none; padding: 0 20px; height: 60px; border-radius: 10px; font-size: 13px; font-weight: 500; cursor: pointer; }
+
+  /* ==================== DIRECTION D — Graph Centré ==================== */
+  #dir-d .mockup { flex: 1; display: flex; flex-direction: column; }
+  #dir-d .topbar { padding: 10px 16px; border-bottom: 1px solid #27272a; display: flex; align-items: center; justify-content: space-between; }
+  #dir-d .topbar-left { display: flex; align-items: center; gap: 12px; }
+  #dir-d .topbar select { background: #18181b; border: 1px solid #3f3f46; color: #f4f4f5; font-size: 13px; padding: 5px 10px; border-radius: 6px; }
+  #dir-d .topbar-right { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #a1a1aa; }
+  #dir-d .main { flex: 1; display: flex; overflow: hidden; }
+  #dir-d .graph-area { flex: 1; position: relative; overflow: hidden; background: radial-gradient(circle at 50% 40%, #1e3a5f08 0%, transparent 60%); }
+  #dir-d svg.edges { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+  #dir-d .graph-node { position: absolute; background: #18181b; border: 1.5px solid #3f3f46; border-radius: 12px; padding: 12px 16px; min-width: 110px; text-align: center; transform: translate(-50%, -50%); }
+  #dir-d .graph-node.working { border-color: #3b82f6; box-shadow: 0 0 0 3px #3b82f615, 0 8px 24px #3b82f620; }
+  #dir-d .graph-node.done { border-color: #10b98160; }
+  #dir-d .graph-node.idle { opacity: .5; }
+  #dir-d .graph-node .gn-name { font-size: 13px; font-weight: 500; margin-bottom: 5px; }
+  #dir-d .graph-node .gn-engine { font-size: 10px; color: #71717a; margin-bottom: 6px; }
+  #dir-d .floating-bubble { position: absolute; background: #1e3a5f; border: 1px solid #3b82f660; border-radius: 10px; padding: 8px 12px; font-size: 11px; color: #93c5fd; max-width: 200px; transform: translate(-50%, 0); white-space: normal; }
+  #dir-d .sidebar { width: 300px; border-left: 1px solid #27272a; display: flex; flex-direction: column; }
+  #dir-d .sidebar-header { padding: 10px 14px; border-bottom: 1px solid #27272a; font-size: 12px; font-weight: 500; color: #a1a1aa; }
+  #dir-d .sidebar-content { flex: 1; overflow-y: auto; padding: 12px 14px; font-size: 11.5px; line-height: 1.65; color: #71717a; }
+  #dir-d .sidebar-content .entry { margin-bottom: 10px; }
+  #dir-d .sidebar-content .entry .ts { color: #52525b; font-size: 10px; }
+  #dir-d .sidebar-content .entry .msg { color: #a1a1aa; }
+  #dir-d .sidebar-content .entry.active .msg { color: #60a5fa; }
+  #dir-d .launch-bar { border-top: 1px solid #27272a; padding: 12px 16px; display: flex; gap: 10px; align-items: flex-end; }
+  #dir-d .launch-bar textarea { flex: 1; background: #18181b; border: 1px solid #3f3f46; color: #f4f4f5; font-size: 13px; padding: 8px 12px; border-radius: 8px; resize: none; height: 54px; font-family: inherit; }
+  #dir-d .launch-bar button { background: #3b82f6; color: white; border: none; padding: 0 18px; height: 54px; border-radius: 8px; font-size: 13px; font-weight: 500; cursor: pointer; }
+
+  /* ==================== DIRECTION E — Terminal Focus ==================== */
+  #dir-e .mockup { flex: 1; display: flex; flex-direction: column; background: #0a0a0a; }
+  #dir-e .topbar { padding: 10px 16px; border-bottom: 1px solid #1c1c1c; display: flex; align-items: center; gap: 12px; background: #111; }
+  #dir-e .topbar select { background: #1c1c1c; border: 1px solid #333; color: #d4d4d4; font-size: 13px; padding: 5px 10px; border-radius: 4px; font-family: 'JetBrains Mono', monospace; }
+  #dir-e .topbar .status-row { margin-left: auto; display: flex; gap: 12px; align-items: center; font-size: 12px; font-family: monospace; }
+  #dir-e .status-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+  #dir-e .status-dot.working { background: #3b82f6; animation: pulse 1.5s infinite; }
+  #dir-e .main { flex: 1; display: flex; overflow: hidden; }
+  #dir-e .mini-pipeline { width: 200px; border-right: 1px solid #1c1c1c; padding: 16px 12px; display: flex; flex-direction: column; gap: 4px; background: #0d0d0d; }
+  #dir-e .mini-pipeline .mp-label { font-size: 10px; color: #555; margin-bottom: 8px; text-transform: uppercase; letter-spacing: .08em; font-family: monospace; }
+  #dir-e .mp-agent { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 4px; font-size: 12px; font-family: monospace; }
+  #dir-e .mp-agent.working { background: #1e3a5f30; color: #60a5fa; }
+  #dir-e .mp-agent.done { color: #34d399; }
+  #dir-e .mp-agent.idle { color: #444; }
+  #dir-e .mp-agent.error { color: #f87171; background: #dc262620; }
+  #dir-e .mp-icon { font-size: 10px; width: 14px; text-align: center; }
+  #dir-e .log-area { flex: 1; display: flex; flex-direction: column; }
+  #dir-e .log-content { flex: 1; overflow-y: auto; padding: 16px 20px; font-size: 12px; font-family: 'JetBrains Mono', 'Fira Code', monospace; line-height: 1.8; color: #888; }
+  #dir-e .log-content .ln { display: flex; gap: 12px; }
+  #dir-e .log-content .ln .ts { color: #444; flex-shrink: 0; }
+  #dir-e .log-content .ln .agent { flex-shrink: 0; }
+  #dir-e .log-content .ln .agent.pm { color: #a78bfa; }
+  #dir-e .log-content .ln .agent.dev { color: #60a5fa; }
+  #dir-e .log-content .ln .agent.qa { color: #34d399; }
+  #dir-e .log-content .ln .text { color: #ccc; }
+  #dir-e .log-content .ln.sys .text { color: #555; font-style: italic; }
+  #dir-e .launch-bar { border-top: 1px solid #1c1c1c; padding: 10px 16px; display: flex; gap: 8px; align-items: center; background: #0d0d0d; font-family: monospace; }
+  #dir-e .launch-bar .prompt { color: #3b82f6; font-size: 13px; flex-shrink: 0; }
+  #dir-e .launch-bar input { flex: 1; background: transparent; border: none; color: #d4d4d4; font-size: 13px; font-family: monospace; outline: none; }
+  #dir-e .launch-bar button { background: #1e3a5f; color: #60a5fa; border: 1px solid #3b82f640; padding: 6px 14px; border-radius: 4px; font-size: 12px; font-family: monospace; cursor: pointer; }
+
+  /* ==================== DIRECTION F — Focus Agent ==================== */
+  #dir-f .mockup { flex: 1; display: flex; flex-direction: column; }
+  #dir-f .topbar { padding: 10px 20px; border-bottom: 1px solid #27272a; display: flex; align-items: center; gap: 16px; }
+  #dir-f .topbar select { background: #18181b; border: 1px solid #3f3f46; color: #f4f4f5; font-size: 13px; padding: 5px 10px; border-radius: 6px; }
+  #dir-f .progress-bar { flex: 1; height: 4px; background: #27272a; border-radius: 2px; overflow: hidden; }
+  #dir-f .progress-fill { height: 100%; background: linear-gradient(90deg, #10b981, #3b82f6); width: 35%; border-radius: 2px; }
+  #dir-f .topbar .pct { font-size: 12px; color: #a1a1aa; }
+  #dir-f .main { flex: 1; display: flex; overflow: hidden; }
+  #dir-f .agent-strip { width: 56px; border-right: 1px solid #27272a; padding: 16px 8px; display: flex; flex-direction: column; gap: 12px; align-items: center; }
+  #dir-f .strip-node { width: 36px; height: 36px; border-radius: 8px; border: 1.5px solid #3f3f46; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 600; color: #71717a; cursor: pointer; transition: all .15s; }
+  #dir-f .strip-node.done { border-color: #10b98160; color: #34d399; background: #05966915; }
+  #dir-f .strip-node.working { border-color: #3b82f6; color: #60a5fa; background: #1e3a5f30; box-shadow: 0 0 12px #3b82f620; }
+  #dir-f .strip-node.idle { opacity: .4; }
+  #dir-f .strip-connector { width: 2px; height: 12px; background: #27272a; }
+  #dir-f .strip-connector.active { background: #3b82f6; }
+  #dir-f .focus-panel { flex: 1; padding: 32px; display: flex; flex-direction: column; gap: 20px; overflow-y: auto; }
+  #dir-f .focus-agent-card { background: #18181b; border: 1px solid #3b82f6; border-radius: 14px; padding: 24px; box-shadow: 0 0 32px #3b82f610; }
+  #dir-f .focus-agent-card .fa-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; }
+  #dir-f .focus-agent-card .fa-name { font-size: 17px; font-weight: 600; }
+  #dir-f .focus-agent-card .fa-engine { font-size: 12px; color: #71717a; margin-top: 3px; }
+  #dir-f .focus-agent-card .fa-steps { display: flex; flex-direction: column; gap: 6px; }
+  #dir-f .focus-agent-card .fa-step { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 6px; font-size: 13px; }
+  #dir-f .focus-agent-card .fa-step.done { color: #34d399; background: #05966910; }
+  #dir-f .focus-agent-card .fa-step.working { color: #60a5fa; background: #1e3a5f30; border: 1px solid #3b82f640; }
+  #dir-f .focus-agent-card .fa-step.pending { color: #52525b; }
+  #dir-f .focus-bubble { background: #1e3a5f40; border: 1px solid #3b82f640; border-radius: 10px; padding: 12px 16px; font-size: 13px; color: #93c5fd; line-height: 1.5; }
+  #dir-f .sidebar { width: 280px; border-left: 1px solid #27272a; display: flex; flex-direction: column; }
+  #dir-f .sidebar-header { padding: 10px 14px; border-bottom: 1px solid #27272a; font-size: 12px; font-weight: 500; color: #a1a1aa; }
+  #dir-f .sidebar-content { flex: 1; overflow-y: auto; padding: 12px; font-size: 11.5px; line-height: 1.65; color: #71717a; }
+  #dir-f .launch-bar { border-top: 1px solid #27272a; padding: 12px 20px; display: flex; gap: 10px; align-items: flex-end; }
+  #dir-f .launch-bar textarea { flex: 1; background: #18181b; border: 1px solid #3f3f46; color: #f4f4f5; font-size: 13px; padding: 8px 12px; border-radius: 8px; resize: none; height: 54px; font-family: inherit; }
+  #dir-f .launch-bar button { background: #3b82f6; color: white; border: none; padding: 0 18px; height: 54px; border-radius: 8px; font-size: 13px; font-weight: 500; cursor: pointer; }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<nav>
+  <span class="logo">xu-workflow</span>
+  <a href="#" class="active" onclick="show('dir-a',this)">A — Pipeline horizontal</a>
+  <a href="#" onclick="show('dir-b',this)">B — Stage columns</a>
+  <a href="#" onclick="show('dir-c',this)">C — Cards spacieux</a>
+  <a href="#" onclick="show('dir-d',this)">D — Graph centré</a>
+  <a href="#" onclick="show('dir-e',this)">E — Terminal focus</a>
+  <a href="#" onclick="show('dir-f',this)">F — Focus agent</a>
+</nav>
+
+<!-- ======================== DIRECTION A ======================== -->
+<section id="dir-a" class="active">
+  <div class="dir-header">
+    <h2>Direction A — Pipeline Horizontal</h2>
+    <p>Vue GitHub Actions : pipeline gauche → droite, nœuds reliés par des arêtes, bulles SSE sous le nœud actif, sidebar log à droite.</p>
+    <div class="tags">
+      <span class="tag">GitHub Actions-inspired</span>
+      <span class="tag">Horizontal flow</span>
+      <span class="tag">Compact</span>
+      <span class="tag">Dense</span>
+    </div>
+  </div>
+  <div class="mockup">
+    <div class="topbar">
+      <select><option>feature-dev.yaml — Projet Laravel</option><option>content-writing.yaml</option><option>bugfix.yaml</option></select>
+      <span class="badge working"><span class="dot pulse"></span>Run en cours — 3m 42s</span>
+      <span class="run-info">2026-04-03 14:30</span>
+    </div>
+    <div class="main">
+      <div class="diagram-area">
+        <div class="pipeline">
+          <div class="agent-node done">
+            <div class="name">PM</div>
+            <div class="engine">claude-code</div>
+            <span class="badge done"><span class="dot"></span>done</span>
+          </div>
+          <div class="edge active"></div>
+          <div class="agent-node working">
+            <div class="name">Laravel Dev</div>
+            <div class="engine">claude-code</div>
+            <span class="badge working"><span class="dot pulse"></span>working</span>
+          </div>
+          <div class="edge"></div>
+          <div class="agent-node idle">
+            <div class="name">QA</div>
+            <div class="engine">gemini-cli</div>
+            <span class="badge idle"><span class="dot"></span>idle</span>
+          </div>
+          <div class="edge"></div>
+          <div class="agent-node idle">
+            <div class="name">DevOps</div>
+            <div class="engine">gemini-cli</div>
+            <span class="badge idle"><span class="dot"></span>idle</span>
+          </div>
+        </div>
+        <div class="bubble">⚙️ Laravel Dev — Étape 3/5 : Exécution en cours — Création du contrôleur NotificationController...</div>
+      </div>
+      <div class="sidebar">
+        <div class="sidebar-header">session.md — Run 2026-04-03-1430</div>
+        <div class="sidebar-content">
+          <div class="log-line success"># Run démarré — 14:30:01</div>
+          <div class="log-line">Brief : "Ajouter système notifications in-app"</div>
+          <div class="log-line"> </div>
+          <div class="log-line highlight">## PM — done (1m 12s)</div>
+          <div class="log-line">Plan établi. 5 composants identifiés.</div>
+          <div class="log-line">Passage à Laravel Dev confirmé.</div>
+          <div class="log-line"> </div>
+          <div class="log-line highlight">## Laravel Dev — working</div>
+          <div class="log-line">Step 1/5 ✓ Analyse de la demande</div>
+          <div class="log-line">Step 2/5 ✓ Plan d'attaque établi</div>
+          <div class="log-line">Step 3/5 → Exécution en cours...</div>
+          <div class="log-line">  → NotificationController.php</div>
+          <div class="log-line">  → Migration notifications table</div>
+          <div class="log-line">  → NotificationResource.php</div>
+        </div>
+      </div>
+    </div>
+    <div class="launch-bar">
+      <textarea placeholder="Brief de la tâche à lancer..."></textarea>
+      <button>▶ Lancer</button>
+    </div>
+  </div>
+</section>
+
+<!-- ======================== DIRECTION B ======================== -->
+<section id="dir-b">
+  <div class="dir-header">
+    <h2>Direction B — Stage Columns</h2>
+    <p>Vue Jenkins Stage View : chaque agent = une colonne, chaque tâche = une ligne. Vue tableau, très dense en information.</p>
+    <div class="tags">
+      <span class="tag">Jenkins-inspired</span>
+      <span class="tag">Tableau</span>
+      <span class="tag">Info dense</span>
+      <span class="tag">Comparaison parallèle</span>
+    </div>
+  </div>
+  <div class="mockup">
+    <div class="topbar">
+      <select><option>feature-dev.yaml — Projet Laravel</option></select>
+      <span class="badge working"><span class="dot pulse"></span>Run actif</span>
+    </div>
+    <div class="stages-header">
+      <div class="stage-col-head done">✓ PM</div>
+      <div class="stage-col-head working"><span class="dot pulse" style="background:#60a5fa;display:inline-block;margin-right:5px;"></span>Laravel Dev</div>
+      <div class="stage-col-head">QA</div>
+      <div class="stage-col-head">DevOps</div>
+    </div>
+    <div class="main">
+      <div class="stages-body">
+        <div class="stage-col">
+          <div class="stage-step done"><div class="step-name">✓ Analyse brief</div><div class="step-meta">12s · claude-code</div></div>
+          <div class="stage-step done"><div class="step-name">✓ Plan de dev</div><div class="step-meta">58s · claude-code</div></div>
+        </div>
+        <div class="stage-col">
+          <div class="stage-step done"><div class="step-name">✓ Analyse demande</div><div class="step-meta">34s</div></div>
+          <div class="stage-step done"><div class="step-name">✓ Plan d'attaque</div><div class="step-meta">47s</div></div>
+          <div class="stage-step working"><div class="step-name">⚙ Exécution</div><div class="step-meta">en cours — 1m 23s</div></div>
+          <div class="stage-step"><div class="step-name">Écriture tests</div><div class="step-meta">—</div></div>
+          <div class="stage-step"><div class="step-name">Fix PHPStan</div><div class="step-meta">—</div></div>
+        </div>
+        <div class="stage-col">
+          <div class="stage-step" style="opacity:.3"><div class="step-name">Review code</div><div class="step-meta">—</div></div>
+          <div class="stage-step" style="opacity:.3"><div class="step-name">Tests intégration</div><div class="step-meta">—</div></div>
+        </div>
+        <div class="stage-col">
+          <div class="stage-step" style="opacity:.3"><div class="step-name">Deploy local</div><div class="step-meta">—</div></div>
+        </div>
+      </div>
+      <div class="sidebar">
+        <div class="sidebar-header">Log — session.md</div>
+        <div class="sidebar-content">14:30 PM ✓ plan établi<br>14:31 Laravel Dev step 1 ✓<br>14:32 Laravel Dev step 2 ✓<br>14:33 Laravel Dev step 3 → running<br>&nbsp;&nbsp;NotificationController...<br>&nbsp;&nbsp;Migration table...</div>
+      </div>
+    </div>
+    <div class="launch-bar">
+      <textarea placeholder="Brief..."></textarea>
+      <button>▶ Lancer</button>
+    </div>
+  </div>
+</section>
+
+<!-- ======================== DIRECTION C ======================== -->
+<section id="dir-c">
+  <div class="dir-header">
+    <h2>Direction C — Cards Spacieux</h2>
+    <p>Chaque agent est une carte verticale. Pipeline linéaire avec connecteurs. Plus aéré, détail des étapes visible dans chaque card.</p>
+    <div class="tags">
+      <span class="tag">Cards verticales</span>
+      <span class="tag">Spacieux</span>
+      <span class="tag">Étapes visibles</span>
+      <span class="tag">shadcn-native</span>
+    </div>
+  </div>
+  <div class="mockup">
+    <div class="topbar">
+      <div class="wf-selector"><span>feature-dev.yaml</span>&nbsp;<small>▾</small></div>
+      <span class="badge working"><span class="dot pulse"></span>Run en cours</span>
+    </div>
+    <div class="main">
+      <div class="diagram-area">
+        <div class="cards-pipeline">
+          <div class="agent-card done">
+            <div class="card-top">
+              <div><div class="agent-name">PM</div><div class="agent-engine">claude-code</div></div>
+              <span class="badge done"><span class="dot"></span>done — 1m12s</span>
+            </div>
+            <div class="steps-list">
+              <div class="step-item done"><div class="step-check done">✓</div>Analyse brief</div>
+              <div class="step-item done"><div class="step-check done">✓</div>Plan de développement</div>
+            </div>
+          </div>
+          <div class="connector"><div class="line active"></div></div>
+          <div class="agent-card working">
+            <div class="card-top">
+              <div><div class="agent-name">Laravel Dev</div><div class="agent-engine">claude-code</div></div>
+              <span class="badge working"><span class="dot pulse"></span>working</span>
+            </div>
+            <div class="steps-list">
+              <div class="step-item done"><div class="step-check done">✓</div>Analyse de la demande</div>
+              <div class="step-item done"><div class="step-check done">✓</div>Plan d'attaque établi</div>
+              <div class="step-item working"><div class="step-check working">⚙</div>Exécution — 1m 23s</div>
+              <div class="step-item"><div class="step-check"></div>Écriture des tests</div>
+              <div class="step-item"><div class="step-check"></div>Fix PHPStan</div>
+            </div>
+            <div class="bubble-box">Création de NotificationController.php · Migration notifications_table · NotificationResource</div>
+          </div>
+          <div class="connector"><div class="line"></div></div>
+          <div class="agent-card idle">
+            <div class="card-top">
+              <div><div class="agent-name">QA</div><div class="agent-engine">gemini-cli</div></div>
+              <span class="badge idle"><span class="dot"></span>idle</span>
+            </div>
+          </div>
+          <div class="connector"><div class="line"></div></div>
+          <div class="agent-card idle">
+            <div class="card-top">
+              <div><div class="agent-name">DevOps</div><div class="agent-engine">gemini-cli</div></div>
+              <span class="badge idle"><span class="dot"></span>idle</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="sidebar">
+        <div class="sidebar-header"><span>session.md</span><span style="color:#52525b">append-only</span></div>
+        <div class="sidebar-content">## Run 2026-04-03-1430<br><br>Brief: notifications in-app...<br><br>### PM ✓<br>Plan établi. 5 composants.<br>Passage Laravel Dev.<br><br>### Laravel Dev ↺<br>Step 1 ✓ Analyse<br>Step 2 ✓ Plan<br>Step 3 → NotificationController<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Migration table<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Resource...</div>
+      </div>
+    </div>
+    <div class="launch-bar">
+      <textarea placeholder="Décris ta tâche..."></textarea>
+      <button>▶ Lancer</button>
+    </div>
+  </div>
+</section>
+
+<!-- ======================== DIRECTION D ======================== -->
+<section id="dir-d">
+  <div class="dir-header">
+    <h2>Direction D — Graph Centré</h2>
+    <p>Nœuds positionnés librement dans un canvas. Arêtes SVG. Bulles flottantes. Préfigure l'open space pixel art de la Phase 3.</p>
+    <div class="tags">
+      <span class="tag">Graph libre</span>
+      <span class="tag">Canvas-ready</span>
+      <span class="tag">Bulles flottantes</span>
+      <span class="tag">Phase 3 preview</span>
+    </div>
+  </div>
+  <div class="mockup">
+    <div class="topbar">
+      <div class="topbar-left">
+        <select><option>feature-dev.yaml</option></select>
+        <span class="badge working"><span class="dot pulse"></span>working</span>
+      </div>
+      <div class="topbar-right">3m 42s · 2 agents done · 1 working</div>
+    </div>
+    <div class="main">
+      <div class="graph-area">
+        <svg class="edges" viewBox="0 0 700 460" preserveAspectRatio="none">
+          <defs><marker id="arr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#10b981"/></marker>
+          <marker id="arr2" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#3b82f6"/></marker>
+          <marker id="arr3" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#3f3f46"/></marker></defs>
+          <line x1="155" y1="120" x2="255" y2="220" stroke="#10b981" stroke-width="2" marker-end="url(#arr)"/>
+          <line x1="390" y1="230" x2="480" y2="200" stroke="#3b82f6" stroke-width="2" stroke-dasharray="6 3" marker-end="url(#arr2)"/>
+          <line x1="540" y1="220" x2="610" y2="310" stroke="#3f3f46" stroke-width="1.5" marker-end="url(#arr3)"/>
+        </svg>
+        <!-- PM node -->
+        <div class="graph-node done" style="left:130px;top:110px">
+          <div class="gn-name">PM</div>
+          <div class="gn-engine">claude-code</div>
+          <span class="badge done" style="font-size:10px"><span class="dot"></span>done</span>
+        </div>
+        <!-- Laravel Dev node -->
+        <div class="graph-node working" style="left:330px;top:220px">
+          <div class="gn-name">Laravel Dev</div>
+          <div class="gn-engine">claude-code</div>
+          <span class="badge working" style="font-size:10px"><span class="dot pulse"></span>working</span>
+        </div>
+        <!-- Bubble -->
+        <div class="floating-bubble" style="left:330px;top:310px">⚙ Étape 3/5 — Exécution<br>NotificationController...</div>
+        <!-- QA node -->
+        <div class="graph-node idle" style="left:510px;top:190px">
+          <div class="gn-name">QA</div>
+          <div class="gn-engine">gemini-cli</div>
+          <span class="badge idle" style="font-size:10px"><span class="dot"></span>idle</span>
+        </div>
+        <!-- DevOps node -->
+        <div class="graph-node idle" style="left:600px;top:300px">
+          <div class="gn-name">DevOps</div>
+          <div class="gn-engine">gemini-cli</div>
+          <span class="badge idle" style="font-size:10px"><span class="dot"></span>idle</span>
+        </div>
+      </div>
+      <div class="sidebar">
+        <div class="sidebar-header">session.md</div>
+        <div class="sidebar-content">
+          <div class="entry"><div class="ts">14:30:01</div><div class="msg">Run démarré — feature-dev.yaml</div></div>
+          <div class="entry"><div class="ts">14:30:03</div><div class="msg">PM → working</div></div>
+          <div class="entry"><div class="ts">14:31:14</div><div class="msg">PM → done (1m 12s)</div></div>
+          <div class="entry active"><div class="ts">14:31:15</div><div class="msg">Laravel Dev → working</div></div>
+          <div class="entry active"><div class="ts">14:33:02</div><div class="msg">Step 3/5 en cours : NotificationController...</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="launch-bar">
+      <textarea placeholder="Brief..."></textarea>
+      <button>▶ Lancer</button>
+    </div>
+  </div>
+</section>
+
+<!-- ======================== DIRECTION E ======================== -->
+<section id="dir-e">
+  <div class="dir-header">
+    <h2>Direction E — Terminal Focus</h2>
+    <p>Esthétique terminal/IDE. Mini pipeline à gauche, log principal au centre. Pour les développeurs qui aiment la densité textuelle.</p>
+    <div class="tags">
+      <span class="tag">Terminal aesthetic</span>
+      <span class="tag">Log-forward</span>
+      <span class="tag">Monospace</span>
+      <span class="tag">Dev tool feel</span>
+    </div>
+  </div>
+  <div class="mockup">
+    <div class="topbar">
+      <select><option>feature-dev.yaml</option></select>
+      <div class="status-row">
+        <span class="status-dot working"></span>
+        <span style="color:#60a5fa;font-family:monospace;font-size:12px">Laravel Dev · step 3/5</span>
+        <span style="color:#555;font-family:monospace;font-size:12px">3m 42s</span>
+      </div>
+    </div>
+    <div class="main">
+      <div class="mini-pipeline">
+        <div class="mp-label">Pipeline</div>
+        <div class="mp-agent done"><span class="mp-icon">✓</span>PM</div>
+        <div class="mp-agent working"><span class="mp-icon">⚙</span>Laravel Dev</div>
+        <div class="mp-agent idle"><span class="mp-icon">·</span>QA</div>
+        <div class="mp-agent idle"><span class="mp-icon">·</span>DevOps</div>
+      </div>
+      <div class="log-area">
+        <div class="log-content">
+          <div class="ln sys"><span class="ts">14:30:01</span><span class="agent" style="color:#555">[sys]</span><span class="text" style="color:#444">run started — feature-dev.yaml</span></div>
+          <div class="ln"><span class="ts">14:30:03</span><span class="agent pm">[pm]</span><span class="text">Brief analysé. 5 composants identifiés.</span></div>
+          <div class="ln"><span class="ts">14:30:44</span><span class="agent pm">[pm]</span><span class="text">Plan de développement établi.</span></div>
+          <div class="ln"><span class="ts">14:31:12</span><span class="agent pm">[pm]</span><span class="text">✓ done (1m 09s). Handoff → Laravel Dev.</span></div>
+          <div class="ln sys"><span class="ts">14:31:14</span><span class="agent" style="color:#555">[sys]</span><span class="text" style="color:#444">→ Laravel Dev started</span></div>
+          <div class="ln"><span class="ts">14:31:15</span><span class="agent dev">[laravel-dev]</span><span class="text">Analyse de la demande...</span></div>
+          <div class="ln"><span class="ts">14:31:49</span><span class="agent dev">[laravel-dev]</span><span class="text">✓ step 1 — analyse (34s)</span></div>
+          <div class="ln"><span class="ts">14:31:50</span><span class="agent dev">[laravel-dev]</span><span class="text">Plan d'attaque : NotificationController + migration + resource + service...</span></div>
+          <div class="ln"><span class="ts">14:32:37</span><span class="agent dev">[laravel-dev]</span><span class="text">✓ step 2 — plan (47s)</span></div>
+          <div class="ln"><span class="ts">14:32:38</span><span class="agent dev">[laravel-dev]</span><span class="text">Exécution en cours...</span></div>
+          <div class="ln"><span class="ts">14:33:01</span><span class="agent dev">[laravel-dev]</span><span class="text">→ app/Http/Controllers/NotificationController.php</span></div>
+          <div class="ln"><span class="ts">14:33:22</span><span class="agent dev">[laravel-dev]</span><span class="text">→ database/migrations/create_notifications_table.php</span></div>
+          <div class="ln"><span class="ts">14:33:45</span><span class="agent dev">[laravel-dev]</span><span class="text">→ app/Http/Resources/NotificationResource.php</span></div>
+          <div class="ln"><span class="ts" style="color:#3b82f6">14:34:02</span><span class="agent dev">[laravel-dev]</span><span class="text" style="color:#60a5fa">▋</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="launch-bar">
+      <span class="prompt">›</span>
+      <input placeholder="Ajouter un système de notifications in-app..." />
+      <button>run</button>
+    </div>
+  </div>
+</section>
+
+<!-- ======================== DIRECTION F ======================== -->
+<section id="dir-f">
+  <div class="dir-header">
+    <h2>Direction F — Focus Agent</h2>
+    <p>L'agent actif occupe tout l'espace central. Strip verticale à gauche pour la navigation pipeline. Progressbar en header.</p>
+    <div class="tags">
+      <span class="tag">Focus unique</span>
+      <span class="tag">Progression visible</span>
+      <span class="tag">Strip navigation</span>
+      <span class="tag">Détail maximal</span>
+    </div>
+  </div>
+  <div class="mockup">
+    <div class="topbar">
+      <select><option>feature-dev.yaml</option></select>
+      <div class="progress-bar"><div class="progress-fill"></div></div>
+      <span class="pct">35% — agent 2/4</span>
+    </div>
+    <div class="main">
+      <div class="agent-strip">
+        <div class="strip-node done" title="PM">PM</div>
+        <div class="strip-connector active"></div>
+        <div class="strip-node working" title="Laravel Dev">LD</div>
+        <div class="strip-connector"></div>
+        <div class="strip-node idle" title="QA">QA</div>
+        <div class="strip-connector"></div>
+        <div class="strip-node idle" title="DevOps">DO</div>
+      </div>
+      <div class="focus-panel">
+        <div class="focus-agent-card">
+          <div class="fa-top">
+            <div><div class="fa-name">Laravel Dev</div><div class="fa-engine">claude-code · feature-dev.yaml</div></div>
+            <span class="badge working"><span class="dot pulse"></span>working</span>
+          </div>
+          <div class="fa-steps">
+            <div class="fa-step done">✓ Analyse de la demande — 34s</div>
+            <div class="fa-step done">✓ Plan d'attaque établi — 47s</div>
+            <div class="fa-step working">⚙ Exécution — 1m 24s en cours...</div>
+            <div class="fa-step pending">○ Écriture des tests</div>
+            <div class="fa-step pending">○ Fix PHPStan</div>
+          </div>
+        </div>
+        <div class="focus-bubble">⚙ Étape 3/5 en cours — Création de NotificationController, migration notifications_table et NotificationResource. Connexion au service NotificationService...</div>
+      </div>
+      <div class="sidebar">
+        <div class="sidebar-header">session.md</div>
+        <div class="sidebar-content">## Run 2026-04-03-1430<br><br>### PM ✓ (1m 12s)<br>Plan établi. 5 composants.<br>→ Laravel Dev<br><br>### Laravel Dev ↺<br>Step 1 ✓ Analyse<br>Step 2 ✓ Plan<br>Step 3 → Exécution<br>&nbsp;&nbsp;NotificationController<br>&nbsp;&nbsp;Migration table<br>&nbsp;&nbsp;Resource...</div>
+      </div>
+    </div>
+    <div class="launch-bar">
+      <textarea placeholder="Brief..."></textarea>
+      <button>▶ Lancer</button>
+    </div>
+  </div>
+</section>
+
+<script>
+function show(id, el) {
+  document.querySelectorAll('section').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('nav a').forEach(a => a.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  el.classList.add('active');
+  return false;
+}
+</script>
+</body>
+</html>
