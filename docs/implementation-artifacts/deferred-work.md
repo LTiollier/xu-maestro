@@ -22,3 +22,9 @@
 - **Extension `.yml` non scannée** — `glob('*.yaml')` ignore les fichiers `.yml`. Choix délibéré (spec utilise `.yaml` partout). À étendre si des utilisateurs apportent des fichiers `.yml`.
 - **`base_path('../workflows')` fragile hors structure repo** — Résout correctement dans la structure actuelle. En cas de containerisation ou déploiement différent, ce chemin relatif devrait être remplacé par une variable d'environnement absolue.
 - **`JsonResource::withoutWrapping()` global dans AppServiceProvider** — Intentionnel : toutes les Resources du projet ne doivent pas avoir le wrapper `data`. Si une future Resource a besoin du wrapper, utiliser `protected static $wrap = 'data'` localement.
+
+## Deferred from: code review of 1-4-selecteur-de-workflow-et-rechargement-dynamique (2026-04-04)
+
+- **Pas de validation runtime de `res.json()`** — Le cast TypeScript `Workflow[]` est nominal uniquement. Pour un backend localhost contrôlé, acceptable. Si le projet expose une API publique, ajouter un parser/validator (ex: Zod).
+- **Clés `file` dupliquées dans la réponse API** — Le `YamlService` Laravel exclut les YAML invalides et scanne par glob, rendant les doublons très improbables. À surveiller si le dossier `workflows/` est partagé entre plusieurs environnements.
+- **`useCallback` deps sur les setters Zustand** — Les setters créés par Zustand sont stables (même référence entre renders). Les inclure dans `useCallback` deps est inoffensif mais crée du bruit de lint potentiel.
