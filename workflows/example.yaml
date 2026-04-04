@@ -1,0 +1,9 @@
+name: "Example Workflow"
+project_path: "/tmp/example"
+agents:
+  - id: agent-one
+    engine: claude-code
+    timeout: 60
+    steps:
+      - "Étape 1 — Analyser le brief"
+    system_prompt: "Tu es un agent de démonstration."
