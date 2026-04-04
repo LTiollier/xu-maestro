@@ -45,7 +45,7 @@ development_status:
   # Epic 1: Visualiser et configurer son équipe d'agents
   epic-1: in-progress
   1-1-initialisation-des-projets-next-js-et-laravel: done
-  1-2-design-system-tokens-couleur-dark-mode-et-layout-principal: backlog
+  1-2-design-system-tokens-couleur-dark-mode-et-layout-principal: done
   1-3-api-laravel-chargement-validation-et-exposition-des-workflows-yaml: backlog
   1-4-selecteur-de-workflow-et-rechargement-dynamique: backlog
   1-5-diagramme-statique-des-agents-d-un-workflow-selectionne: backlog
