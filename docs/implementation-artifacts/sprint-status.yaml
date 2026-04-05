@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-04
-last_updated: 2026-04-04  # updated by code-review (1-5 → done)
+last_updated: 2026-04-05  # updated by code-review (2-1 → done)
 project: xu-workflow
 project_key: NOKEY
 tracking_system: file-system
@@ -52,8 +52,8 @@ development_status:
   epic-1-retrospective: optional
 
   # Epic 2: Lancer et observer un run complet
-  epic-2: backlog
-  2-1-moteur-d-execution-laravel-spawn-cli-sequentiel-et-contrat-json: backlog
+  epic-2: in-progress
+  2-1-moteur-d-execution-laravel-spawn-cli-sequentiel-et-contrat-json: done
   2-2-timeout-par-tache-et-annulation-de-run: backlog
   2-3-contexte-partage-inter-agents-et-artefacts-de-run: backlog
   2-4-stream-sse-evenements-temps-reel-laravel-next-js: backlog

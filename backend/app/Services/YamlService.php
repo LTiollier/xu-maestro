@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Exceptions\YamlLoadException;
 use Symfony\Component\Yaml\Exception\ParseException;
 use Symfony\Component\Yaml\Yaml;
 
@@ -35,6 +36,30 @@ class YamlService
         return $workflows;
     }
 
+    public function load(string $filename): array
+    {
+        $safe = basename($filename);
+        $path = config('xu-workflow.workflows_path') . '/' . $safe;
+
+        if (! file_exists($path)) {
+            throw new YamlLoadException("Workflow file not found: {$safe}");
+        }
+
+        try {
+            $data = Yaml::parseFile($path);
+        } catch (ParseException $e) {
+            throw new YamlLoadException("Invalid YAML in {$safe}: " . $e->getMessage());
+        }
+
+        if (! $this->validate($data)) {
+            throw new YamlLoadException("Invalid workflow structure in {$safe}");
+        }
+
+        $data['file'] = $safe;
+
+        return $data;
+    }
+
     public function validate(mixed $data): bool
     {
         if (! is_array($data)) {
@@ -42,6 +67,10 @@ class YamlService
         }
 
         if (! isset($data['name']) || ! is_string($data['name']) || $data['name'] === '') {
+            return false;
+        }
+
+        if (! isset($data['project_path']) || ! is_string($data['project_path']) || $data['project_path'] === '') {
             return false;
         }
 

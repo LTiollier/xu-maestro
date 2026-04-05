@@ -34,3 +34,16 @@
 - **AgentDiagram positions Y ignorent le nombre de steps** — `position: { x: 0, y: index * 220 }` est une heuristique fixe. `fitView` compense l'imprécision pour Story 1.5 (pipeline statique). À réévaluer en Story 2.6 si les cards ont des hauteurs très variables selon les steps.
 - **AgentDiagram containerHeight statique** — `agents.length * 220 + 80` ignore la hauteur réelle des cards (variable selon le nombre de steps par agent). Scrollbar possible sur de grandes cartes. À raffiner en Story 2.6 avec un layout observer ou calcul par steps.
 - **AgentDiagram absence de filtre frontend agent.id vide** — Le backend filtre déjà les agents avec id vide (test `agent_with_empty_id_is_excluded` confirmé). Un guard frontend `filter(agent => agent.id?.trim())` serait de la defense-in-depth. À ajouter si d'autres sources d'agents apparaissent (ex: YAML generé dynamiquement).
+
+## Deferred from: code review of 2-1-moteur-d-execution-laravel-spawn-cli-sequentiel-et-contrat-json (2026-04-05)
+
+- **`cancel()` supprimé de `DriverInterface`** — Était un stub `throw RuntimeException('Not implemented')`, aucun appelant connu. À redéfinir proprement en Story 2.2 (timeout/kill mechanism).
+- **Pas d'auth/rate-limit sur `POST /runs`** — Route ouverte intentionnellement pour MVP localhost. À sécuriser avant tout déploiement réseau (middleware auth + throttle).
+- **`GeminiDriver --yolo` sans restriction d'outils** — Flag requis par la CLI Gemini pour l'auto-approve. Pas d'équivalent `--allowedTools`. Documenter les implications dans la spec de déploiement.
+- **`project_path` non validé comme répertoire existant** — `validate()` vérifie uniquement que c'est une string non vide. `Process::path('/nonexistent')` lèvera une `RuntimeException` explicite. Acceptable MVP.
+- **IDs agents dupliqués non détectés dans `validate()`** — Deux agents avec le même `id` produisent des résultats ambigus dans `agentResults[]`. À ajouter si la validation devient plus stricte.
+- **`RunResource extends JsonResource` pour un array plain** — Fonctionne correctement, mais `JsonResource` est conçu pour Eloquent. Refactorer si une meilleure abstraction émerge.
+- **`runId` non persisté** — UUID généré et retourné mais non sauvegardé. Toute requête ultérieure par runId échouera. Adressé par Story 2.3 (filesystem persistence).
+- **Pas de limite de taille sur stdout capturé** — `$result->output()` bufferise tout en mémoire. Agent retournant des MB de données peut saturer le worker. À adresser par streaming ou limite configurable.
+- **`--allowedTools` hardcodé dans ClaudeDriver** — Liste `"Bash,Read,Write,Edit"` fixe pour MVP. À rendre configurable par agent (via YAML) si les workflows nécessitent des outils différents.
+- **`startedAt` inclut le temps de chargement YAML** — `microtime(true)` appelé avant `yamlService->load()`. `duration` inclut le parsing YAML (~ms). Cosmétique mais trompeur pour l'analyse perf.
