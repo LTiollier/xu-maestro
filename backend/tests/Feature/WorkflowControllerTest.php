@@ -173,7 +173,7 @@ YAML);
     }
 
     #[Test]
-    public function system_prompt_and_steps_are_not_exposed(): void
+    public function steps_are_exposed_and_system_prompt_is_not(): void
     {
         file_put_contents($this->tmpDir . '/full.yaml', <<<YAML
 name: "Full Workflow"
@@ -192,10 +192,31 @@ YAML);
 
         $response->assertStatus(200);
 
+        // steps[] doit être exposé (requis par Story 1.5 pour l'affichage AgentCard)
+        $response->assertJsonPath('0.agents.0.steps', ['Step 1', 'Step 2']);
+
+        // system_prompt ne doit jamais être exposé (secret)
         $agent = $response->json('0.agents.0');
-        $this->assertArrayNotHasKey('steps', $agent);
         $this->assertArrayNotHasKey('system_prompt', $agent);
         $this->assertArrayNotHasKey('systemPrompt', $agent);
+    }
+
+    #[Test]
+    public function agent_without_steps_returns_empty_array(): void
+    {
+        file_put_contents($this->tmpDir . '/no-steps.yaml', <<<YAML
+name: "No Steps Workflow"
+project_path: "/tmp"
+agents:
+  - id: agent-a
+    engine: claude-code
+    timeout: 60
+YAML);
+
+        $response = $this->getJson('/api/workflows');
+
+        $response->assertStatus(200);
+        $response->assertJsonPath('0.agents.0.steps', []);
     }
 
     #[Test]

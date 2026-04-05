@@ -28,3 +28,9 @@
 - **Pas de validation runtime de `res.json()`** — Le cast TypeScript `Workflow[]` est nominal uniquement. Pour un backend localhost contrôlé, acceptable. Si le projet expose une API publique, ajouter un parser/validator (ex: Zod).
 - **Clés `file` dupliquées dans la réponse API** — Le `YamlService` Laravel exclut les YAML invalides et scanne par glob, rendant les doublons très improbables. À surveiller si le dossier `workflows/` est partagé entre plusieurs environnements.
 - **`useCallback` deps sur les setters Zustand** — Les setters créés par Zustand sont stables (même référence entre renders). Les inclure dans `useCallback` deps est inoffensif mais crée du bruit de lint potentiel.
+
+## Deferred from: code review of 1-5-diagramme-statique-des-agents-d-un-workflow-selectionne (2026-04-04)
+
+- **AgentDiagram positions Y ignorent le nombre de steps** — `position: { x: 0, y: index * 220 }` est une heuristique fixe. `fitView` compense l'imprécision pour Story 1.5 (pipeline statique). À réévaluer en Story 2.6 si les cards ont des hauteurs très variables selon les steps.
+- **AgentDiagram containerHeight statique** — `agents.length * 220 + 80` ignore la hauteur réelle des cards (variable selon le nombre de steps par agent). Scrollbar possible sur de grandes cartes. À raffiner en Story 2.6 avec un layout observer ou calcul par steps.
+- **AgentDiagram absence de filtre frontend agent.id vide** — Le backend filtre déjà les agents avec id vide (test `agent_with_empty_id_is_excluded` confirmé). Un guard frontend `filter(agent => agent.id?.trim())` serait de la defense-in-depth. À ajouter si d'autres sources d'agents apparaissent (ex: YAML generé dynamiquement).
