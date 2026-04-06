@@ -7,7 +7,7 @@ use Illuminate\Support\Facades\Process;
 
 class ClaudeDriver implements DriverInterface
 {
-    public function execute(string $projectPath, string $systemPrompt, string $context): string
+    public function execute(string $projectPath, string $systemPrompt, string $context, int $timeout): string
     {
         $command = 'claude -p --output-format json --allowedTools "Bash,Read,Write,Edit"';
 
@@ -17,7 +17,7 @@ class ClaudeDriver implements DriverInterface
 
         $result = Process::path($projectPath)
             ->input($context)
-            ->timeout(config('xu-workflow.default_timeout', 120))
+            ->timeout($timeout)
             ->run($command);
 
         if ($result->failed()) {
@@ -25,5 +25,12 @@ class ClaudeDriver implements DriverInterface
         }
 
         return $result->output();
+    }
+
+    public function kill(int $pid): void
+    {
+        if ($pid > 0 && function_exists('posix_kill')) {
+            posix_kill($pid, SIGTERM);
+        }
     }
 }

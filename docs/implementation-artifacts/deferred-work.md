@@ -47,3 +47,11 @@
 - **Pas de limite de taille sur stdout capturé** — `$result->output()` bufferise tout en mémoire. Agent retournant des MB de données peut saturer le worker. À adresser par streaming ou limite configurable.
 - **`--allowedTools` hardcodé dans ClaudeDriver** — Liste `"Bash,Read,Write,Edit"` fixe pour MVP. À rendre configurable par agent (via YAML) si les workflows nécessitent des outils différents.
 - **`startedAt` inclut le temps de chargement YAML** — `microtime(true)` appelé avant `yamlService->load()`. `duration` inclut le parsing YAML (~ms). Cosmétique mais trompeur pour l'analyse perf.
+
+## Deferred from: code review of 2-2-timeout-par-tache-et-annulation-de-run (2026-04-06)
+
+- **TOCTOU dans `destroy()`** — `cache()->has()` puis `cache()->put()` ne sont pas atomiques. Un run terminant entre les deux appels pose un flag orphelin. Acceptable MVP (finally block nettoie dans tous les cas). À adresser via opération atomique (Lua script Redis ou lock) si la concurrence devient réelle.
+- **Pas d'auth/rate-limit sur `DELETE /runs/{id}`** — Route ouverte intentionnellement pour MVP localhost. À sécuriser avant tout déploiement réseau (middleware auth + throttle), cohérent avec la décision prise pour `POST /runs`.
+- **Run ID exposé dans le message 404** — `"Run not found or already completed: {$id}"` répercute l'ID fourni par le client. Pas d'injection possible (UUID validé par le routeur), mais peut faciliter l'énumération en environnement multi-user. À filtrer si authentification ajoutée.
+- **`(int) config(...)` fragile si valeur null** — `(int) null === 0`, ce qui passerait silencieusement un timeout de 0 à `Process::timeout(0)` (désactivation totale). À remplacer par `(int) config(...) ?: 120` ou validation dans `config/xu-workflow.php`.
+- **`timeout: "60"` (string YAML) non géré** — `isset($agent['timeout']) && is_int($agent['timeout'])` rejette les strings numériques. Le Symfony Yaml parser peut retourner des ints pour les valeurs sans guillemets, mais les guillemets (`timeout: "60"`) produiront une string. À documenter dans la spec YAML ou ajouter `is_numeric()` + cast.

@@ -75,7 +75,8 @@ class RunServiceTest extends TestCase
             ->with(
                 '/tmp/test',
                 '',
-                json_encode(['brief' => 'Mon brief de test'])
+                json_encode(['brief' => 'Mon brief de test']),
+                $this->anything()
             )
             ->willReturn($this->validOutput());
 
@@ -102,7 +103,7 @@ class RunServiceTest extends TestCase
         $driver = $this->createMock(DriverInterface::class);
         $driver->expects($this->exactly(2))
             ->method('execute')
-            ->willReturnCallback(function (string $projectPath, string $systemPrompt, string $context) use (&$calls, $output1, $output2) {
+            ->willReturnCallback(function (string $projectPath, string $systemPrompt, string $context, int $timeout) use (&$calls, $output1, $output2) {
                 $calls[] = $context;
 
                 return count($calls) === 1 ? $output1 : $output2;
@@ -153,7 +154,7 @@ class RunServiceTest extends TestCase
 
         $this->mockDriver->expects($this->once())
             ->method('execute')
-            ->with('/tmp/test', 'Tu es un agent de test.', $this->anything())
+            ->with('/tmp/test', 'Tu es un agent de test.', $this->anything(), $this->anything())
             ->willReturn($this->validOutput());
 
         $this->service->execute('test.yaml', 'brief');
@@ -166,7 +167,7 @@ class RunServiceTest extends TestCase
 
         $this->mockDriver->expects($this->once())
             ->method('execute')
-            ->with('/tmp/test', '', $this->anything())
+            ->with('/tmp/test', '', $this->anything(), $this->anything())
             ->willReturn($this->validOutput());
 
         $this->service->execute('test.yaml', 'brief');
@@ -187,7 +188,7 @@ class RunServiceTest extends TestCase
 
         $this->mockDriver->expects($this->once())
             ->method('execute')
-            ->with('/tmp/test', 'Contenu du prompt depuis fichier.', $this->anything())
+            ->with('/tmp/test', 'Contenu du prompt depuis fichier.', $this->anything(), $this->anything())
             ->willReturn($this->validOutput());
 
         $this->service->execute('test.yaml', 'brief');

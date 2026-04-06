@@ -1,7 +1,9 @@
 <?php
 
+use App\Exceptions\AgentTimeoutException;
 use App\Exceptions\CliExecutionException;
 use App\Exceptions\InvalidJsonOutputException;
+use App\Exceptions\RunCancelledException;
 use App\Exceptions\YamlLoadException;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -38,5 +40,19 @@ return Application::configure(basePath: dirname(__DIR__))
                 'message' => $e->getMessage(),
                 'code'    => 'YAML_INVALID',
             ], 422);
+        });
+
+        $exceptions->render(function (AgentTimeoutException $e, Request $request) {
+            return response()->json([
+                'message' => $e->getMessage(),
+                'code'    => 'AGENT_TIMEOUT',
+            ], 504);
+        });
+
+        $exceptions->render(function (RunCancelledException $e, Request $request) {
+            return response()->json([
+                'message' => $e->getMessage(),
+                'code'    => 'RUN_CANCELLED',
+            ], 409);
         });
     })->create();

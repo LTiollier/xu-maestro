@@ -3,8 +3,11 @@
 namespace App\Services;
 
 use App\Drivers\DriverInterface;
+use App\Exceptions\AgentTimeoutException;
 use App\Exceptions\CliExecutionException;
 use App\Exceptions\InvalidJsonOutputException;
+use App\Exceptions\RunCancelledException;
+use Illuminate\Process\Exceptions\ProcessTimedOutException;
 use Illuminate\Support\Str;
 
 class RunService
@@ -20,44 +23,68 @@ class RunService
 
         $runId = Str::uuid()->toString();
         $createdAt = now()->toIso8601String();
-        $startedAt = microtime(true);
+
+        // Register active run in cache (TTL 1h) — allows DELETE /api/runs/{id} cancellation
+        cache()->put("run:{$runId}", ['status' => 'running', 'startedAt' => $createdAt], 3600);
 
         $context = json_encode(['brief' => $brief], JSON_THROW_ON_ERROR);
         $agentResults = [];
 
-        foreach ($workflow['agents'] as $agent) {
-            $agentId = $agent['id'];
-            $systemPrompt = $this->resolveSystemPrompt($agent);
+        try {
+            $startedAt = microtime(true);
 
-            try {
-                $rawOutput = $this->driver->execute(
-                    $workflow['project_path'],
-                    $systemPrompt,
-                    $context
-                );
-            } catch (CliExecutionException $e) {
-                throw new CliExecutionException($agentId, $e->exitCode, $e->stderr);
+            foreach ($workflow['agents'] as $agent) {
+                $agentId = $agent['id'];
+
+                // Check cancellation flag BEFORE spawning next agent
+                if (cache()->get("run:{$runId}:cancelled", false)) {
+                    throw new RunCancelledException($runId);
+                }
+
+                // Per-agent timeout from YAML; fall back to global default
+                $timeout = isset($agent['timeout']) && is_int($agent['timeout']) && $agent['timeout'] > 0
+                    ? $agent['timeout']
+                    : (int) config('xu-workflow.default_timeout', 120);
+
+                $systemPrompt = $this->resolveSystemPrompt($agent);
+
+                try {
+                    $rawOutput = $this->driver->execute(
+                        $workflow['project_path'],
+                        $systemPrompt,
+                        $context,
+                        $timeout
+                    );
+                } catch (CliExecutionException $e) {
+                    throw new CliExecutionException($agentId, $e->exitCode, $e->stderr);
+                } catch (ProcessTimedOutException) {
+                    throw new AgentTimeoutException($agentId, $timeout);
+                }
+
+                $decoded = $this->validateJsonOutput($agentId, $rawOutput);
+
+                $agentResults[] = [
+                    'id'     => $agentId,
+                    'status' => $decoded['status'],
+                ];
+
+                $context = json_encode($decoded, JSON_THROW_ON_ERROR);
             }
 
-            $decoded = $this->validateJsonOutput($agentId, $rawOutput);
+            $duration = (int) round((microtime(true) - $startedAt) * 1000);
 
-            $agentResults[] = [
-                'id'     => $agentId,
-                'status' => $decoded['status'],
+            return [
+                'runId'     => $runId,
+                'status'    => 'completed',
+                'agents'    => $agentResults,
+                'duration'  => $duration,
+                'createdAt' => $createdAt,
             ];
-
-            $context = json_encode($decoded, JSON_THROW_ON_ERROR);
+        } finally {
+            // NFR4: clean up cache in all cases (success, timeout, cancellation, error)
+            cache()->forget("run:{$runId}");
+            cache()->forget("run:{$runId}:cancelled");
         }
-
-        $duration = (int) round((microtime(true) - $startedAt) * 1000);
-
-        return [
-            'runId'     => $runId,
-            'status'    => 'completed',
-            'agents'    => $agentResults,
-            'duration'  => $duration,
-            'createdAt' => $createdAt,
-        ];
     }
 
     private function validateJsonOutput(string $agentId, string $rawOutput): array

@@ -27,4 +27,21 @@ class RunController extends Controller
             ->response()
             ->setStatusCode(201);
     }
+
+    public function destroy(string $id): JsonResponse
+    {
+        if (! cache()->has("run:{$id}")) {
+            return response()->json([
+                'message' => "Run not found or already completed: {$id}",
+                'code'    => 'RUN_NOT_FOUND',
+            ], 404);
+        }
+
+        cache()->put("run:{$id}:cancelled", true, 3600);
+
+        return response()->json([
+            'message' => 'Cancellation requested',
+            'runId'   => $id,
+        ], 202);
+    }
 }

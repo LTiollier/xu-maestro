@@ -6,3 +6,4 @@ use Illuminate\Support\Facades\Route;
 
 Route::get('/workflows', [WorkflowController::class, 'index']);
 Route::post('/runs', [RunController::class, 'store']);
+Route::delete('/runs/{id}', [RunController::class, 'destroy']);
