@@ -65,3 +65,16 @@
 - **`$brief` avec newlines peut injecter de faux headers Markdown** — Newlines dans le brief produisent des sections `## Agent:` fictives dans `session.md`. Pas de risque sécurité (localhost, session.md non servi). Sanitiser si session.md devient lisible via API. [ArtifactService.php:22]
 - **Chemin `/session.md` dupliqué** — String hardcodée dans `ArtifactService` (put/append/get) et `RunService` (checkpoint context field). Un renommage casse l'un sans casser l'autre. Extraire en constante si besoin. [ArtifactService.php, RunService.php]
 - **Ordre de fusion `$_ENV` + `getenv()`** — `array_merge($_ENV, getenv() ?: [])` : `getenv()` écrase `$_ENV` pour la même clé. Dans certains SAPIs les deux divergent. Peu probable de causer un credential manqué en pratique. [ArtifactService.php:86]
+
+## Deferred from: code review of 2-4-stream-sse-evenements-temps-reel-laravel-next-js (2026-04-07)
+
+- **Pas d'authentification sur les routes SSE/DELETE** — Localhost single-user, auth hors scope MVP.
+- **`step: 0` hardcodé dans tous les events SSE** — Granularité step-level prévue en Epic 3 (CheckpointService dédié).
+- **`runFolder` et `checkpointPath` exposent des chemins serveur absolus dans les payloads SSE** — Localhost single-user, sécurité hors scope MVP.
+- **Collision `ArtifactService::initializeRun()` si deux runs dans la même seconde** — Pré-existant story 2.3, hors scope 2.4.
+- **`RunCancelledException` émis comme `RunError`** — Impossible de distinguer cancel intentionnel d'une erreur réelle. Pas de `RunCancelled` event par design MVP, à revisiter si l'UX le requiert.
+- **Message `CliExecutionException` contient `'claude'` au lieu de l'agentId réel** — Pré-existant dans `ClaudeDriver.php`, hors scope 2.4.
+- **`brief` sans validation `max:`** — Hardening sécurité hors scope MVP.
+- **`resolveSystemPrompt()` retourne `''` silencieusement si fichier absent** — Pré-existant story 2.1, comportement documenté acceptable MVP.
+- **`SseEmitter` listeners enregistrés globalement — `ob_flush()` appelé hors contexte HTTP** — Pas de callers non-HTTP de RunService actuellement, risque latent si CLI Artisan ajouté.
+- **`sendKeepAlive()` jamais appelé** — Localhost sans proxy Nginx, timeout non bloquant pour MVP. À activer quand un proxy est introduit (décision D2 code review 2.4).

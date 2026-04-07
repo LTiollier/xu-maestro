@@ -3,12 +3,14 @@
 namespace App\Services;
 
 use App\Drivers\DriverInterface;
+use App\Events\AgentBubble;
+use App\Events\AgentStatusChanged;
+use App\Events\RunCompleted;
 use App\Exceptions\AgentTimeoutException;
 use App\Exceptions\CliExecutionException;
 use App\Exceptions\InvalidJsonOutputException;
 use App\Exceptions\RunCancelledException;
 use Illuminate\Process\Exceptions\ProcessTimedOutException;
-use Illuminate\Support\Str;
 
 class RunService
 {
@@ -18,24 +20,18 @@ class RunService
         private readonly ArtifactService $artifactService,
     ) {}
 
-    public function execute(string $workflowFile, string $brief): array
+    public function execute(string $runId, string $workflowFile, string $brief): void
     {
-        $workflow = $this->yamlService->load($workflowFile);
-
-        $runId     = Str::uuid()->toString();
+        $workflow  = $this->yamlService->load($workflowFile);
         $createdAt = now()->toIso8601String();
 
-        // Register active run in cache (TTL 1h) — allows DELETE /api/runs/{id} cancellation
         cache()->put("run:{$runId}", ['status' => 'running', 'startedAt' => $createdAt], 3600);
 
         $agentResults    = [];
         $completedAgents = [];
 
         try {
-            // Initialiser les artefacts du run (dossier + session.md + checkpoint.json + agents/)
             $runPath = $this->artifactService->initializeRun($runId, $workflowFile, $brief);
-
-            // Contexte initial : contenu de session.md (header avec le brief)
             $context = $this->artifactService->getContextContent($runPath);
 
             $startedAt = microtime(true);
@@ -43,19 +39,16 @@ class RunService
             foreach ($workflow['agents'] as $agent) {
                 $agentId = $agent['id'];
 
-                // Check cancellation flag BEFORE spawning next agent
                 if (cache()->get("run:{$runId}:cancelled", false)) {
                     throw new RunCancelledException($runId);
                 }
 
-                // Per-agent timeout from YAML; fall back to global default
                 $timeout = isset($agent['timeout']) && is_int($agent['timeout']) && $agent['timeout'] > 0
                     ? $agent['timeout']
                     : (int) config('xu-workflow.default_timeout', 120);
 
                 $systemPrompt = $this->resolveSystemPrompt($agent);
 
-                // Checkpoint avant spawn : currentAgent mis à jour
                 $this->artifactService->writeCheckpoint($runPath, [
                     'runId'           => $runId,
                     'workflowFile'    => $workflowFile,
@@ -66,6 +59,9 @@ class RunService
                     'context'         => $runPath . '/session.md',
                 ]);
 
+                // Émettre 'working' avant le spawn CLI
+                event(new AgentStatusChanged($runId, $agentId, 'working', 0, ''));
+
                 try {
                     $rawOutput = $this->driver->execute(
                         $workflow['project_path'],
@@ -74,21 +70,24 @@ class RunService
                         $timeout
                     );
                 } catch (CliExecutionException $e) {
+                    event(new AgentStatusChanged($runId, $agentId, 'error', 0, $e->getMessage()));
                     throw new CliExecutionException($agentId, $e->exitCode, $e->stderr);
                 } catch (ProcessTimedOutException) {
+                    event(new AgentStatusChanged($runId, $agentId, 'error', 0, "Timeout after {$timeout}s"));
                     throw new AgentTimeoutException($agentId, $timeout);
                 }
 
-                // Valider le JSON avant d'écrire les artefacts
                 $decoded = $this->validateJsonOutput($agentId, $rawOutput);
 
-                // Artefacts : append session.md (append-only) + save agents/{agentId}.md
                 $this->artifactService->appendAgentOutput($runPath, $agentId, $rawOutput);
 
                 $completedAgents[] = $agentId;
+                $context           = $this->artifactService->getContextContent($runPath);
 
-                // Contexte mis à jour pour le prochain agent (session.md enrichi)
-                $context = $this->artifactService->getContextContent($runPath);
+                // Émettre bubble puis done après succès
+                $bubbleMessage = is_string($decoded['output']) ? $decoded['output'] : json_encode($decoded['output']);
+                event(new AgentBubble($runId, $agentId, $bubbleMessage, 0));
+                event(new AgentStatusChanged($runId, $agentId, 'done', 0, ''));
 
                 $agentResults[] = [
                     'id'     => $agentId,
@@ -98,18 +97,11 @@ class RunService
 
             $duration = (int) round((microtime(true) - $startedAt) * 1000);
 
-            return [
-                'runId'     => $runId,
-                'status'    => 'completed',
-                'agents'    => $agentResults,
-                'duration'  => $duration,
-                'createdAt' => $createdAt,
-                'runFolder' => $runPath,
-            ];
+            event(new RunCompleted($runId, $duration, count($agentResults), 'completed', $runPath));
         } finally {
-            // NFR4: clean up cache in all cases (success, timeout, cancellation, error)
             cache()->forget("run:{$runId}");
             cache()->forget("run:{$runId}:cancelled");
+            cache()->put("run:{$runId}:done", true, 3600);
         }
     }
 

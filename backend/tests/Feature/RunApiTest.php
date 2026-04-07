@@ -2,99 +2,22 @@
 
 namespace Tests\Feature;
 
-use App\Drivers\DriverInterface;
-use App\Exceptions\InvalidJsonOutputException;
-use App\Services\ArtifactService;
-use Illuminate\Support\Facades\Config;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
 class RunApiTest extends TestCase
 {
-    private string $tmpDir;
-
-    protected function setUp(): void
-    {
-        parent::setUp();
-
-        $this->tmpDir = sys_get_temp_dir() . '/xu-workflow-run-test-' . uniqid();
-        mkdir($this->tmpDir, 0755, true);
-
-        Config::set('xu-workflow.workflows_path', $this->tmpDir);
-
-        $mockArtifact = $this->createMock(ArtifactService::class);
-        $mockArtifact->method('initializeRun')->willReturn('/tmp/test-run');
-        $mockArtifact->method('getContextContent')->willReturn('# context');
-        $this->app->instance(ArtifactService::class, $mockArtifact);
-    }
-
-    protected function tearDown(): void
-    {
-        foreach (glob($this->tmpDir . '/*.yaml') ?: [] as $file) {
-            unlink($file);
-        }
-        if (is_dir($this->tmpDir)) {
-            rmdir($this->tmpDir);
-        }
-
-        parent::tearDown();
-    }
-
-    private function createYaml(string $filename, array $overrides = []): void
-    {
-        $yaml = array_merge([
-            'name'         => 'Test Workflow',
-            'project_path' => '/tmp/test-project',
-            'agents'       => [
-                [
-                    'id'     => 'agent-one',
-                    'engine' => 'claude-code',
-                    'steps'  => ['Analyser le brief'],
-                ],
-            ],
-        ], $overrides);
-
-        $content = "name: \"{$yaml['name']}\"\n";
-        $content .= "project_path: \"{$yaml['project_path']}\"\n";
-        $content .= "agents:\n";
-        foreach ($yaml['agents'] as $agent) {
-            $content .= "  - id: {$agent['id']}\n";
-            $content .= "    engine: {$agent['engine']}\n";
-        }
-
-        file_put_contents($this->tmpDir . '/' . $filename, $content);
-    }
-
-    private function validDriverOutput(): string
-    {
-        return json_encode([
-            'step'        => 'analyse',
-            'status'      => 'done',
-            'output'      => 'Analyse terminée.',
-            'next_action' => null,
-            'errors'      => [],
-        ]);
-    }
-
     #[Test]
-    public function it_returns_201_with_correct_structure_on_valid_run(): void
+    public function it_returns_202_with_run_id_and_pending_status(): void
     {
-        $this->createYaml('test-workflow.yaml');
-
-        $mockDriver = $this->createMock(DriverInterface::class);
-        $mockDriver->method('execute')->willReturn($this->validDriverOutput());
-        $this->app->instance(DriverInterface::class, $mockDriver);
-
         $response = $this->postJson('/api/runs', [
             'workflowFile' => 'test-workflow.yaml',
             'brief'        => 'Ajouter des notifications in-app',
         ]);
 
-        $response->assertStatus(201)
-            ->assertJsonStructure(['runId', 'status', 'agents', 'duration', 'createdAt', 'runFolder'])
-            ->assertJsonPath('status', 'completed')
-            ->assertJsonCount(1, 'agents')
-            ->assertJsonPath('agents.0.id', 'agent-one');
+        $response->assertStatus(202)
+            ->assertJsonStructure(['runId', 'status'])
+            ->assertJsonPath('status', 'pending');
 
         $this->assertMatchesRegularExpression(
             '/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/',
@@ -103,33 +26,21 @@ class RunApiTest extends TestCase
     }
 
     #[Test]
-    public function it_returns_422_when_workflow_file_not_found(): void
+    public function it_stores_run_config_in_cache_after_post(): void
     {
         $response = $this->postJson('/api/runs', [
-            'workflowFile' => 'inexistant.yaml',
-            'brief'        => 'Test brief',
+            'workflowFile' => 'my-workflow.yaml',
+            'brief'        => 'Mon brief de test',
         ]);
 
-        $response->assertStatus(422)
-            ->assertJsonPath('code', 'YAML_INVALID');
-    }
+        $response->assertStatus(202);
 
-    #[Test]
-    public function it_returns_422_when_driver_returns_invalid_json(): void
-    {
-        $this->createYaml('test-workflow.yaml');
+        $runId = $response->json('runId');
+        $config = cache()->get("run:{$runId}:config");
 
-        $mockDriver = $this->createMock(DriverInterface::class);
-        $mockDriver->method('execute')->willReturn('not-valid-json');
-        $this->app->instance(DriverInterface::class, $mockDriver);
-
-        $response = $this->postJson('/api/runs', [
-            'workflowFile' => 'test-workflow.yaml',
-            'brief'        => 'Test brief',
-        ]);
-
-        $response->assertStatus(422)
-            ->assertJsonPath('code', 'INVALID_JSON_OUTPUT');
+        $this->assertNotNull($config);
+        $this->assertSame('my-workflow.yaml', $config['workflowFile']);
+        $this->assertSame('Mon brief de test', $config['brief']);
     }
 
     #[Test]
@@ -142,21 +53,48 @@ class RunApiTest extends TestCase
     }
 
     #[Test]
-    public function it_returns_no_data_wrapper(): void
+    public function it_returns_422_when_workflow_file_format_invalid(): void
     {
-        $this->createYaml('test-workflow.yaml');
-
-        $mockDriver = $this->createMock(DriverInterface::class);
-        $mockDriver->method('execute')->willReturn($this->validDriverOutput());
-        $this->app->instance(DriverInterface::class, $mockDriver);
-
         $response = $this->postJson('/api/runs', [
-            'workflowFile' => 'test-workflow.yaml',
-            'brief'        => 'Brief',
+            'workflowFile' => '../etc/passwd',
+            'brief'        => 'Test brief',
         ]);
 
-        // withoutWrapping() doit être actif — pas de clé 'data'
-        $response->assertJsonMissing(['data']);
-        $response->assertJsonStructure(['runId', 'status', 'runFolder']);
+        $response->assertStatus(422)
+            ->assertJsonValidationErrors(['workflowFile']);
+    }
+
+    #[Test]
+    public function it_accepts_yaml_extension_variants(): void
+    {
+        $responseYaml = $this->postJson('/api/runs', [
+            'workflowFile' => 'my-flow.yaml',
+            'brief'        => 'brief',
+        ]);
+        $responseYml = $this->postJson('/api/runs', [
+            'workflowFile' => 'my-flow.yml',
+            'brief'        => 'brief',
+        ]);
+
+        $responseYaml->assertStatus(202);
+        $responseYml->assertStatus(202);
+    }
+
+    #[Test]
+    public function it_generates_unique_run_ids_for_concurrent_posts(): void
+    {
+        $response1 = $this->postJson('/api/runs', [
+            'workflowFile' => 'workflow.yaml',
+            'brief'        => 'brief 1',
+        ]);
+        $response2 = $this->postJson('/api/runs', [
+            'workflowFile' => 'workflow.yaml',
+            'brief'        => 'brief 2',
+        ]);
+
+        $response1->assertStatus(202);
+        $response2->assertStatus(202);
+
+        $this->assertNotSame($response1->json('runId'), $response2->json('runId'));
     }
 }

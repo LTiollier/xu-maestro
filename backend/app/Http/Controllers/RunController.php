@@ -2,15 +2,12 @@
 
 namespace App\Http\Controllers;
 
-use App\Http\Resources\RunResource;
-use App\Services\RunService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 
 class RunController extends Controller
 {
-    public function __construct(private readonly RunService $runService) {}
-
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -18,19 +15,22 @@ class RunController extends Controller
             'brief'        => ['required', 'string'],
         ]);
 
-        $result = $this->runService->execute(
-            $validated['workflowFile'],
-            $validated['brief']
-        );
+        $runId = Str::uuid()->toString();
 
-        return (new RunResource($result))
-            ->response()
-            ->setStatusCode(201);
+        cache()->put("run:{$runId}:config", [
+            'workflowFile' => $validated['workflowFile'],
+            'brief'        => $validated['brief'],
+        ], 3600);
+
+        return response()->json([
+            'runId'  => $runId,
+            'status' => 'pending',
+        ], 202);
     }
 
     public function destroy(string $id): JsonResponse
     {
-        if (! cache()->has("run:{$id}")) {
+        if (! cache()->has("run:{$id}") && ! cache()->has("run:{$id}:config")) {
             return response()->json([
                 'message' => "Run not found or already completed: {$id}",
                 'code'    => 'RUN_NOT_FOUND',

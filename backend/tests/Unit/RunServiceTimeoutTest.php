@@ -10,9 +10,8 @@ use App\Services\RunService;
 use App\Services\YamlService;
 use Illuminate\Contracts\Process\ProcessResult;
 use Illuminate\Process\Exceptions\ProcessTimedOutException;
-use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Event;
 use PHPUnit\Framework\Attributes\Test;
-use Ramsey\Uuid\Uuid as RamseyUuid;
 use Symfony\Component\Process\Exception\ProcessTimedOutException as SymfonyProcessTimedOutException;
 use Tests\TestCase;
 
@@ -29,21 +28,16 @@ class RunServiceTimeoutTest extends TestCase
 
         config(['cache.default' => 'array']);
 
+        Event::fake();
+
         $this->mockDriver   = $this->createMock(DriverInterface::class);
         $this->mockYaml     = $this->createMock(YamlService::class);
         $this->mockArtifact = $this->createMock(ArtifactService::class);
 
         $this->mockArtifact->method('initializeRun')->willReturn('/tmp/test-run');
         $this->mockArtifact->method('getContextContent')->willReturn('# context');
-        // appendAgentOutput et writeCheckpoint sont void — pas de willReturn()
 
         $this->service = new RunService($this->mockDriver, $this->mockYaml, $this->mockArtifact);
-    }
-
-    protected function tearDown(): void
-    {
-        Str::createUuidsNormally();
-        parent::tearDown();
     }
 
     private function validOutput(): string
@@ -57,19 +51,12 @@ class RunServiceTimeoutTest extends TestCase
         ]);
     }
 
-    /** Build a ProcessTimedOutException with mocked dependencies. */
     private function makeProcessTimedOutException(): ProcessTimedOutException
     {
         $symfonyException = $this->createMock(SymfonyProcessTimedOutException::class);
-        $processResult = $this->createMock(ProcessResult::class);
+        $processResult    = $this->createMock(ProcessResult::class);
 
         return new ProcessTimedOutException($symfonyException, $processResult);
-    }
-
-    /** Force Str::uuid() to return a known ID so we can pre-set cache keys. */
-    private function forceUuid(string $id): void
-    {
-        Str::createUuidsUsing(fn () => RamseyUuid::fromString($id));
     }
 
     private function workflowWithAgentTimeout(int $timeout): array
@@ -129,7 +116,7 @@ class RunServiceTimeoutTest extends TestCase
             )
             ->willReturn($this->validOutput());
 
-        $this->service->execute('test.yaml', 'brief');
+        $this->service->execute('test-run-id', 'test.yaml', 'brief');
     }
 
     #[Test]
@@ -148,7 +135,7 @@ class RunServiceTimeoutTest extends TestCase
             )
             ->willReturn($this->validOutput());
 
-        $this->service->execute('test.yaml', 'brief');
+        $this->service->execute('test-run-id', 'test.yaml', 'brief');
     }
 
     #[Test]
@@ -159,7 +146,7 @@ class RunServiceTimeoutTest extends TestCase
             ->willThrowException($this->makeProcessTimedOutException());
 
         try {
-            $this->service->execute('test.yaml', 'brief');
+            $this->service->execute('test-run-id', 'test.yaml', 'brief');
             $this->fail('AgentTimeoutException not thrown');
         } catch (AgentTimeoutException $e) {
             $this->assertSame('agent-one', $e->agentId);
@@ -174,45 +161,39 @@ class RunServiceTimeoutTest extends TestCase
     #[Test]
     public function it_stops_before_first_agent_when_cancellation_flag_set(): void
     {
-        $knownId = '11111111-1111-1111-1111-111111111111';
-        $this->forceUuid($knownId);
-
-        cache()->put("run:{$knownId}:cancelled", true, 300);
+        $runId = '11111111-1111-1111-1111-111111111111';
+        cache()->put("run:{$runId}:cancelled", true, 300);
 
         $this->mockYaml->method('load')->willReturn($this->workflowWithoutTimeout());
-
-        // Driver ne doit jamais être appelé
         $this->mockDriver->expects($this->never())->method('execute');
 
         $this->expectException(RunCancelledException::class);
-        $this->expectExceptionMessageMatches("/{$knownId}/");
+        $this->expectExceptionMessageMatches("/{$runId}/");
 
-        $this->service->execute('test.yaml', 'brief');
+        $this->service->execute($runId, 'test.yaml', 'brief');
     }
 
     #[Test]
     public function it_stops_before_second_agent_when_cancellation_flag_set_after_first(): void
     {
-        $knownId = '22222222-2222-2222-2222-222222222222';
-        $this->forceUuid($knownId);
+        $runId = '22222222-2222-2222-2222-222222222222';
 
         $this->mockYaml->method('load')->willReturn($this->twoAgentWorkflow());
 
         $callCount = 0;
         $this->mockDriver->method('execute')
-            ->willReturnCallback(function () use ($knownId, &$callCount) {
+            ->willReturnCallback(function () use ($runId, &$callCount) {
                 $callCount++;
-                // Simulate DELETE called after first agent completes
-                cache()->put("run:{$knownId}:cancelled", true, 300);
+                cache()->put("run:{$runId}:cancelled", true, 300);
 
                 return $this->validOutput();
             });
 
         $this->expectException(RunCancelledException::class);
-        $this->expectExceptionMessage($knownId);
+        $this->expectExceptionMessage($runId);
 
         try {
-            $this->service->execute('multi.yaml', 'brief');
+            $this->service->execute($runId, 'multi.yaml', 'brief');
         } finally {
             $this->assertSame(1, $callCount, 'Only first agent should have run');
         }
@@ -223,56 +204,53 @@ class RunServiceTimeoutTest extends TestCase
     #[Test]
     public function it_cleans_up_cache_after_successful_run(): void
     {
-        $knownId = '33333333-3333-3333-3333-333333333333';
-        $this->forceUuid($knownId);
+        $runId = '33333333-3333-3333-3333-333333333333';
 
         $this->mockYaml->method('load')->willReturn($this->workflowWithoutTimeout());
         $this->mockDriver->method('execute')->willReturn($this->validOutput());
 
-        $this->service->execute('test.yaml', 'brief');
+        $this->service->execute($runId, 'test.yaml', 'brief');
 
-        $this->assertNull(cache()->get("run:{$knownId}"));
-        $this->assertNull(cache()->get("run:{$knownId}:cancelled"));
+        $this->assertNull(cache()->get("run:{$runId}"));
+        $this->assertNull(cache()->get("run:{$runId}:cancelled"));
+        $this->assertTrue(cache()->get("run:{$runId}:done"));
     }
 
     #[Test]
     public function it_cleans_up_cache_after_timeout(): void
     {
-        $knownId = '44444444-4444-4444-4444-444444444444';
-        $this->forceUuid($knownId);
+        $runId = '44444444-4444-4444-4444-444444444444';
 
         $this->mockYaml->method('load')->willReturn($this->workflowWithAgentTimeout(10));
         $this->mockDriver->method('execute')
             ->willThrowException($this->makeProcessTimedOutException());
 
         try {
-            $this->service->execute('test.yaml', 'brief');
+            $this->service->execute($runId, 'test.yaml', 'brief');
         } catch (AgentTimeoutException) {
             // Expected
         }
 
-        $this->assertNull(cache()->get("run:{$knownId}"));
-        $this->assertNull(cache()->get("run:{$knownId}:cancelled"));
+        $this->assertNull(cache()->get("run:{$runId}"));
+        $this->assertNull(cache()->get("run:{$runId}:cancelled"));
     }
 
     #[Test]
     public function it_registers_active_run_in_cache_before_driver_is_called(): void
     {
-        $knownId = '55555555-5555-5555-5555-555555555555';
-        $this->forceUuid($knownId);
+        $runId = '55555555-5555-5555-5555-555555555555';
 
         $this->mockYaml->method('load')->willReturn($this->workflowWithoutTimeout());
 
         $runRegisteredBeforeExecution = false;
         $this->mockDriver->method('execute')
-            ->willReturnCallback(function () use ($knownId, &$runRegisteredBeforeExecution) {
-                // Verify run is registered in cache BEFORE driver is called
-                $runRegisteredBeforeExecution = cache()->has("run:{$knownId}");
+            ->willReturnCallback(function () use ($runId, &$runRegisteredBeforeExecution) {
+                $runRegisteredBeforeExecution = cache()->has("run:{$runId}");
 
                 return $this->validOutput();
             });
 
-        $this->service->execute('test.yaml', 'brief');
+        $this->service->execute($runId, 'test.yaml', 'brief');
 
         $this->assertTrue($runRegisteredBeforeExecution, 'Run should be registered in cache before driver execution');
     }

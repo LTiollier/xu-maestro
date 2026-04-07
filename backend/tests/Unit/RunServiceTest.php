@@ -3,10 +3,14 @@
 namespace Tests\Unit;
 
 use App\Drivers\DriverInterface;
+use App\Events\AgentBubble;
+use App\Events\AgentStatusChanged;
+use App\Events\RunCompleted;
 use App\Exceptions\InvalidJsonOutputException;
 use App\Services\ArtifactService;
 use App\Services\RunService;
 use App\Services\YamlService;
+use Illuminate\Support\Facades\Event;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
@@ -21,14 +25,14 @@ class RunServiceTest extends TestCase
     {
         parent::setUp();
 
+        Event::fake();
+
         $this->mockDriver   = $this->createMock(DriverInterface::class);
         $this->mockYaml     = $this->createMock(YamlService::class);
         $this->mockArtifact = $this->createMock(ArtifactService::class);
 
-        // Defaults : ArtifactService ne touche pas au filesystem dans les tests unitaires
         $this->mockArtifact->method('initializeRun')->willReturn('/tmp/test-run');
         $this->mockArtifact->method('getContextContent')->willReturn('# context from session.md');
-        // appendAgentOutput et writeCheckpoint sont void — pas de willReturn()
 
         $this->service = new RunService($this->mockDriver, $this->mockYaml, $this->mockArtifact);
     }
@@ -58,22 +62,63 @@ class RunServiceTest extends TestCase
     }
 
     #[Test]
-    public function it_executes_single_agent_and_returns_run_result(): void
+    public function it_executes_single_agent_and_emits_run_completed_event(): void
     {
         $this->mockYaml->method('load')->willReturn($this->singleAgentWorkflow());
         $this->mockDriver->method('execute')->willReturn($this->validOutput());
 
-        $result = $this->service->execute('test.yaml', 'Mon brief');
+        $this->service->execute('test-run-id', 'test.yaml', 'Mon brief');
 
-        $this->assertArrayHasKey('runId', $result);
-        $this->assertSame('completed', $result['status']);
-        $this->assertCount(1, $result['agents']);
-        $this->assertSame('agent-one', $result['agents'][0]['id']);
-        $this->assertSame('done', $result['agents'][0]['status']);
-        $this->assertArrayHasKey('duration', $result);
-        $this->assertArrayHasKey('createdAt', $result);
-        $this->assertArrayHasKey('runFolder', $result);
-        $this->assertSame('/tmp/test-run', $result['runFolder']);
+        Event::assertDispatched(RunCompleted::class, function (RunCompleted $e) {
+            return $e->runId === 'test-run-id'
+                && $e->agentCount === 1
+                && $e->status === 'completed'
+                && $e->runFolder === '/tmp/test-run';
+        });
+    }
+
+    #[Test]
+    public function it_emits_working_and_done_events_for_each_agent(): void
+    {
+        $this->mockYaml->method('load')->willReturn($this->singleAgentWorkflow());
+        $this->mockDriver->method('execute')->willReturn($this->validOutput());
+
+        $this->service->execute('test-run-id', 'test.yaml', 'brief');
+
+        Event::assertDispatched(AgentStatusChanged::class, function (AgentStatusChanged $e) {
+            return $e->runId === 'test-run-id'
+                && $e->agentId === 'agent-one'
+                && $e->status === 'working';
+        });
+
+        Event::assertDispatched(AgentStatusChanged::class, function (AgentStatusChanged $e) {
+            return $e->runId === 'test-run-id'
+                && $e->agentId === 'agent-one'
+                && $e->status === 'done';
+        });
+    }
+
+    #[Test]
+    public function it_emits_bubble_event_with_agent_output_after_success(): void
+    {
+        $output = json_encode([
+            'step'        => 'analyse',
+            'status'      => 'done',
+            'output'      => 'Analyse terminée avec succès.',
+            'next_action' => null,
+            'errors'      => [],
+        ]);
+
+        $this->mockYaml->method('load')->willReturn($this->singleAgentWorkflow());
+        $this->mockDriver->method('execute')->willReturn($output);
+
+        $this->service->execute('test-run-id', 'test.yaml', 'brief');
+
+        Event::assertDispatched(AgentBubble::class, function (AgentBubble $e) {
+            return $e->runId === 'test-run-id'
+                && $e->agentId === 'agent-one'
+                && $e->message === 'Analyse terminée avec succès.';
+        });
     }
 
     #[Test]
@@ -81,7 +126,6 @@ class RunServiceTest extends TestCase
     {
         $this->mockYaml->method('load')->willReturn($this->singleAgentWorkflow());
 
-        // Le contexte initial est le contenu de session.md retourné par ArtifactService
         $this->mockDriver->expects($this->once())
             ->method('execute')
             ->with(
@@ -92,7 +136,7 @@ class RunServiceTest extends TestCase
             )
             ->willReturn($this->validOutput());
 
-        $this->service->execute('test.yaml', 'Mon brief de test');
+        $this->service->execute('test-run-id', 'test.yaml', 'Mon brief de test');
     }
 
     #[Test]
@@ -124,21 +168,18 @@ class RunServiceTest extends TestCase
         $yaml = $this->createMock(YamlService::class);
         $yaml->method('load')->willReturn($workflow);
 
-        // ArtifactService retourne des contextes successifs distincts
         $mockArtifact = $this->createMock(ArtifactService::class);
         $mockArtifact->method('initializeRun')->willReturn('/tmp/test-run');
-        // getContextContent appelé 3 fois : 1 init + 1 après agent-1 + 1 après agent-2 (non utilisé)
         $mockArtifact->expects($this->exactly(3))
             ->method('getContextContent')
             ->willReturnOnConsecutiveCalls(
-                '# initial session content',       // init → contexte pour agent-1
-                '# session content after agent-1', // après agent-1 → contexte pour agent-2
-                '# session content after agent-2'  // après agent-2 (non utilisé, pas d'agent-3)
+                '# initial session content',
+                '# session content after agent-1',
+                '# session content after agent-2'
             );
-        // appendAgentOutput et writeCheckpoint sont void — pas de willReturn()
 
         $service = new RunService($driver, $yaml, $mockArtifact);
-        $service->execute('multi.yaml', 'brief');
+        $service->execute('test-run-id', 'multi.yaml', 'brief');
 
         $this->assertSame('# initial session content', $calls[0]);
         $this->assertSame('# session content after agent-1', $calls[1]);
@@ -153,14 +194,13 @@ class RunServiceTest extends TestCase
         $this->expectException(InvalidJsonOutputException::class);
         $this->expectExceptionMessageMatches('/Not valid JSON/');
 
-        $this->service->execute('test.yaml', 'brief');
+        $this->service->execute('test-run-id', 'test.yaml', 'brief');
     }
 
     #[Test]
     public function it_throws_invalid_json_exception_on_missing_required_field(): void
     {
         $this->mockYaml->method('load')->willReturn($this->singleAgentWorkflow());
-        // Missing 'errors' field
         $this->mockDriver->method('execute')->willReturn(json_encode([
             'step' => 'x', 'status' => 'done', 'output' => 'y', 'next_action' => null,
         ]));
@@ -168,7 +208,7 @@ class RunServiceTest extends TestCase
         $this->expectException(InvalidJsonOutputException::class);
         $this->expectExceptionMessageMatches('/Missing field: errors/');
 
-        $this->service->execute('test.yaml', 'brief');
+        $this->service->execute('test-run-id', 'test.yaml', 'brief');
     }
 
     #[Test]
@@ -182,7 +222,7 @@ class RunServiceTest extends TestCase
             ->with('/tmp/test', 'Tu es un agent de test.', $this->anything(), $this->anything())
             ->willReturn($this->validOutput());
 
-        $this->service->execute('test.yaml', 'brief');
+        $this->service->execute('test-run-id', 'test.yaml', 'brief');
     }
 
     #[Test]
@@ -195,13 +235,12 @@ class RunServiceTest extends TestCase
             ->with('/tmp/test', '', $this->anything(), $this->anything())
             ->willReturn($this->validOutput());
 
-        $this->service->execute('test.yaml', 'brief');
+        $this->service->execute('test-run-id', 'test.yaml', 'brief');
     }
 
     #[Test]
     public function it_loads_system_prompt_from_file_when_inline_absent(): void
     {
-        // Créer un fichier de prompt temporaire
         $promptsDir = sys_get_temp_dir() . '/xu-prompts-test-' . uniqid();
         mkdir($promptsDir, 0755, true);
         file_put_contents($promptsDir . '/my-prompt.md', 'Contenu du prompt depuis fichier.');
@@ -216,27 +255,10 @@ class RunServiceTest extends TestCase
             ->with('/tmp/test', 'Contenu du prompt depuis fichier.', $this->anything(), $this->anything())
             ->willReturn($this->validOutput());
 
-        $this->service->execute('test.yaml', 'brief');
+        $this->service->execute('test-run-id', 'test.yaml', 'brief');
 
-        // Nettoyage
         unlink($promptsDir . '/my-prompt.md');
         rmdir($promptsDir);
-    }
-
-    #[Test]
-    public function it_returns_unique_run_id_as_uuid(): void
-    {
-        $this->mockYaml->method('load')->willReturn($this->singleAgentWorkflow());
-        $this->mockDriver->method('execute')->willReturn($this->validOutput());
-
-        $result1 = $this->service->execute('test.yaml', 'brief');
-        $result2 = $this->service->execute('test.yaml', 'brief');
-
-        $this->assertMatchesRegularExpression(
-            '/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/',
-            $result1['runId']
-        );
-        $this->assertNotSame($result1['runId'], $result2['runId']);
     }
 
     #[Test]
@@ -247,7 +269,7 @@ class RunServiceTest extends TestCase
 
         $this->mockArtifact->expects($this->once())->method('initializeRun');
 
-        $this->service->execute('test.yaml', 'brief');
+        $this->service->execute('test-run-id', 'test.yaml', 'brief');
     }
 
     #[Test]
@@ -267,6 +289,6 @@ class RunServiceTest extends TestCase
 
         $this->mockArtifact->expects($this->exactly(2))->method('appendAgentOutput');
 
-        $this->service->execute('multi.yaml', 'brief');
+        $this->service->execute('test-run-id', 'multi.yaml', 'brief');
     }
 }
