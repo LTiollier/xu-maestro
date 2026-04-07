@@ -4,6 +4,7 @@ namespace Tests\Unit;
 
 use App\Drivers\DriverInterface;
 use App\Exceptions\InvalidJsonOutputException;
+use App\Services\ArtifactService;
 use App\Services\RunService;
 use App\Services\YamlService;
 use PHPUnit\Framework\Attributes\Test;
@@ -13,15 +14,23 @@ class RunServiceTest extends TestCase
 {
     private DriverInterface $mockDriver;
     private YamlService $mockYaml;
+    private ArtifactService $mockArtifact;
     private RunService $service;
 
     protected function setUp(): void
     {
         parent::setUp();
 
-        $this->mockDriver = $this->createMock(DriverInterface::class);
-        $this->mockYaml = $this->createMock(YamlService::class);
-        $this->service = new RunService($this->mockDriver, $this->mockYaml);
+        $this->mockDriver   = $this->createMock(DriverInterface::class);
+        $this->mockYaml     = $this->createMock(YamlService::class);
+        $this->mockArtifact = $this->createMock(ArtifactService::class);
+
+        // Defaults : ArtifactService ne touche pas au filesystem dans les tests unitaires
+        $this->mockArtifact->method('initializeRun')->willReturn('/tmp/test-run');
+        $this->mockArtifact->method('getContextContent')->willReturn('# context from session.md');
+        // appendAgentOutput et writeCheckpoint sont void — pas de willReturn()
+
+        $this->service = new RunService($this->mockDriver, $this->mockYaml, $this->mockArtifact);
     }
 
     private function validOutput(string $step = 'analyse', string $status = 'done'): string
@@ -63,19 +72,22 @@ class RunServiceTest extends TestCase
         $this->assertSame('done', $result['agents'][0]['status']);
         $this->assertArrayHasKey('duration', $result);
         $this->assertArrayHasKey('createdAt', $result);
+        $this->assertArrayHasKey('runFolder', $result);
+        $this->assertSame('/tmp/test-run', $result['runFolder']);
     }
 
     #[Test]
-    public function it_passes_brief_as_initial_context_to_first_agent(): void
+    public function it_passes_session_md_content_as_initial_context_to_first_agent(): void
     {
         $this->mockYaml->method('load')->willReturn($this->singleAgentWorkflow());
 
+        // Le contexte initial est le contenu de session.md retourné par ArtifactService
         $this->mockDriver->expects($this->once())
             ->method('execute')
             ->with(
                 '/tmp/test',
                 '',
-                json_encode(['brief' => 'Mon brief de test']),
+                '# context from session.md',
                 $this->anything()
             )
             ->willReturn($this->validOutput());
@@ -84,7 +96,7 @@ class RunServiceTest extends TestCase
     }
 
     #[Test]
-    public function it_passes_output_of_agent_n_as_context_of_agent_n_plus_1(): void
+    public function it_passes_updated_session_md_as_context_to_next_agent(): void
     {
         $workflow = [
             'name'         => 'Multi',
@@ -98,7 +110,7 @@ class RunServiceTest extends TestCase
 
         $output1 = $this->validOutput('step-1');
         $output2 = $this->validOutput('step-2');
-        $calls = [];
+        $calls   = [];
 
         $driver = $this->createMock(DriverInterface::class);
         $driver->expects($this->exactly(2))
@@ -112,11 +124,24 @@ class RunServiceTest extends TestCase
         $yaml = $this->createMock(YamlService::class);
         $yaml->method('load')->willReturn($workflow);
 
-        $service = new RunService($driver, $yaml);
+        // ArtifactService retourne des contextes successifs distincts
+        $mockArtifact = $this->createMock(ArtifactService::class);
+        $mockArtifact->method('initializeRun')->willReturn('/tmp/test-run');
+        // getContextContent appelé 3 fois : 1 init + 1 après agent-1 + 1 après agent-2 (non utilisé)
+        $mockArtifact->expects($this->exactly(3))
+            ->method('getContextContent')
+            ->willReturnOnConsecutiveCalls(
+                '# initial session content',       // init → contexte pour agent-1
+                '# session content after agent-1', // après agent-1 → contexte pour agent-2
+                '# session content after agent-2'  // après agent-2 (non utilisé, pas d'agent-3)
+            );
+        // appendAgentOutput et writeCheckpoint sont void — pas de willReturn()
+
+        $service = new RunService($driver, $yaml, $mockArtifact);
         $service->execute('multi.yaml', 'brief');
 
-        $this->assertSame(json_encode(['brief' => 'brief']), $calls[0]);
-        $this->assertSame($output1, $calls[1]);
+        $this->assertSame('# initial session content', $calls[0]);
+        $this->assertSame('# session content after agent-1', $calls[1]);
     }
 
     #[Test]
@@ -212,5 +237,36 @@ class RunServiceTest extends TestCase
             $result1['runId']
         );
         $this->assertNotSame($result1['runId'], $result2['runId']);
+    }
+
+    #[Test]
+    public function it_calls_artifact_service_initialize_run_once(): void
+    {
+        $this->mockYaml->method('load')->willReturn($this->singleAgentWorkflow());
+        $this->mockDriver->method('execute')->willReturn($this->validOutput());
+
+        $this->mockArtifact->expects($this->once())->method('initializeRun');
+
+        $this->service->execute('test.yaml', 'brief');
+    }
+
+    #[Test]
+    public function it_calls_append_agent_output_for_each_agent(): void
+    {
+        $workflow = [
+            'name'         => 'Multi',
+            'project_path' => '/tmp/test',
+            'file'         => 'multi.yaml',
+            'agents'       => [
+                ['id' => 'agent-1', 'engine' => 'claude-code'],
+                ['id' => 'agent-2', 'engine' => 'claude-code'],
+            ],
+        ];
+        $this->mockYaml->method('load')->willReturn($workflow);
+        $this->mockDriver->method('execute')->willReturn($this->validOutput());
+
+        $this->mockArtifact->expects($this->exactly(2))->method('appendAgentOutput');
+
+        $this->service->execute('multi.yaml', 'brief');
     }
 }

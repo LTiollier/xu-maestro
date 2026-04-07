@@ -14,6 +14,7 @@ class RunResource extends JsonResource
             'agents'    => $this->resource['agents'],
             'duration'  => $this->resource['duration'],
             'createdAt' => $this->resource['createdAt'],
+            'runFolder' => $this->resource['runFolder'],
         ];
     }
 }

@@ -5,6 +5,7 @@ namespace Tests\Unit;
 use App\Drivers\DriverInterface;
 use App\Exceptions\AgentTimeoutException;
 use App\Exceptions\RunCancelledException;
+use App\Services\ArtifactService;
 use App\Services\RunService;
 use App\Services\YamlService;
 use Illuminate\Contracts\Process\ProcessResult;
@@ -19,6 +20,7 @@ class RunServiceTimeoutTest extends TestCase
 {
     private DriverInterface $mockDriver;
     private YamlService $mockYaml;
+    private ArtifactService $mockArtifact;
     private RunService $service;
 
     protected function setUp(): void
@@ -27,9 +29,15 @@ class RunServiceTimeoutTest extends TestCase
 
         config(['cache.default' => 'array']);
 
-        $this->mockDriver = $this->createMock(DriverInterface::class);
-        $this->mockYaml = $this->createMock(YamlService::class);
-        $this->service = new RunService($this->mockDriver, $this->mockYaml);
+        $this->mockDriver   = $this->createMock(DriverInterface::class);
+        $this->mockYaml     = $this->createMock(YamlService::class);
+        $this->mockArtifact = $this->createMock(ArtifactService::class);
+
+        $this->mockArtifact->method('initializeRun')->willReturn('/tmp/test-run');
+        $this->mockArtifact->method('getContextContent')->willReturn('# context');
+        // appendAgentOutput et writeCheckpoint sont void — pas de willReturn()
+
+        $this->service = new RunService($this->mockDriver, $this->mockYaml, $this->mockArtifact);
     }
 
     protected function tearDown(): void

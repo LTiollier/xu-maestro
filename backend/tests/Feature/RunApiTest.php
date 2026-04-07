@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Drivers\DriverInterface;
 use App\Exceptions\InvalidJsonOutputException;
+use App\Services\ArtifactService;
 use Illuminate\Support\Facades\Config;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
@@ -20,6 +21,11 @@ class RunApiTest extends TestCase
         mkdir($this->tmpDir, 0755, true);
 
         Config::set('xu-workflow.workflows_path', $this->tmpDir);
+
+        $mockArtifact = $this->createMock(ArtifactService::class);
+        $mockArtifact->method('initializeRun')->willReturn('/tmp/test-run');
+        $mockArtifact->method('getContextContent')->willReturn('# context');
+        $this->app->instance(ArtifactService::class, $mockArtifact);
     }
 
     protected function tearDown(): void
@@ -85,7 +91,7 @@ class RunApiTest extends TestCase
         ]);
 
         $response->assertStatus(201)
-            ->assertJsonStructure(['runId', 'status', 'agents', 'duration', 'createdAt'])
+            ->assertJsonStructure(['runId', 'status', 'agents', 'duration', 'createdAt', 'runFolder'])
             ->assertJsonPath('status', 'completed')
             ->assertJsonCount(1, 'agents')
             ->assertJsonPath('agents.0.id', 'agent-one');
@@ -151,6 +157,6 @@ class RunApiTest extends TestCase
 
         // withoutWrapping() doit être actif — pas de clé 'data'
         $response->assertJsonMissing(['data']);
-        $response->assertJsonStructure(['runId', 'status']);
+        $response->assertJsonStructure(['runId', 'status', 'runFolder']);
     }
 }
