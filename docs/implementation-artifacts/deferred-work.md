@@ -78,3 +78,23 @@
 - **`resolveSystemPrompt()` retourne `''` silencieusement si fichier absent** — Pré-existant story 2.1, comportement documenté acceptable MVP.
 - **`SseEmitter` listeners enregistrés globalement — `ob_flush()` appelé hors contexte HTTP** — Pas de callers non-HTTP de RunService actuellement, risque latent si CLI Artisan ajouté.
 - **`sendKeepAlive()` jamais appelé** — Localhost sans proxy Nginx, timeout non bloquant pour MVP. À activer quand un proxy est introduit (décision D2 code review 2.4).
+
+## Deferred from: code review of 2-5-client-sse-et-mise-a-jour-des-stores-zustand (2026-04-08)
+
+- **`bubbleMessage` non vidé lors d'une transition de status** — Story 2.6/2.7b décidera du comportement visuel des bulles. [agentStatusStore.ts]
+- **`AgentBubble.step` non stocké dans le store** — `step: 0` hardcodé par design (Epic 3 granularité step-level). [agentStatusStore.ts]
+- **`checkpointPath` sur `RunErrorEvent` non consommé** — Epic 3 (retry depuis checkpoint). [useSSEListener.ts]
+- **`RunCompletedEvent.agentCount`/`.status` non stockés dans le store** — Utilisés en Story 2.7b (`RunSummaryModal`). [runStore.ts]
+- **`setRunId(null)` ne reset pas `errorMessage`/`duration`** — Par design : `resetRun()` est le chemin de reset complet. [runStore.ts]
+- **Race `runStore: 'running'` vs SSE failure** — Story 2.7a (`LaunchBar`) gère la corrélation `runId` + ouverture SSE. [useSSEListener.ts]
+- **`runFolder` non validé pour chaîne vide** — Localhost MVP, serveur toujours correct. [sseEventParser.ts]
+- **Timeout connexion `EventSource` absent** — Localhost MVP, pas de proxy réseau. [useSSEListener.ts]
+- **Race ordering `run.completed` avant dernier `agent.status.changed`** — Laravel garantit l'ordre d'émission. [useSSEListener.ts]
+- **Multiples `RUN_ERROR`, dernier gagne** — Serveur émet au plus un `run.error` par run. [runStore.ts]
+
+## Deferred from: code review of 2-6-diagramme-anime-etats-temps-reel-et-transitions-de-handoff (2026-04-08)
+
+- **`agents` subscription dans `AgentDiagramInner` déclenche `useMemo` sur chaque `setAgentBubble`** — `bubbleMessage` n'est pas lu dans `AgentDiagram`, mais tout changement du record `agents` recompute nodes/edges. Impact minimal (≤5 agents, localhost), mais à optimiser avec un sélecteur status-only + `shallow` si la fréquence des bulles devient problématique. [AgentDiagram.tsx]
+- **Edge affiche `inactive` quand l'agent source est en `error`** — La logique `agents[agent.id]?.status === 'done' ? 'done' : 'inactive'` collapse `error` → `inactive`. Un état visuel `error` sur l'edge connecteur n'est pas spécifié en 2.6 — à décider si une couleur rouge sur l'edge est souhaitée lors de 3.3 (alerte localisée). [AgentDiagram.tsx]
+- **Garantie AC4 "même tick" non applicable avec deux events SSE distincts** — Quand agent N → `done` et agent N+1 → `working` arrivent en deux events SSE séparés, deux renders React se produisent. En pratique invisible sur localhost (< 1ms entre les deux events), mais techniquement non atomique. Fix possible via batching côté frontend (`unstable_batchedUpdates`) ou regroupement des transitions côté backend. [AgentDiagram.tsx, useSSEListener.ts]
+- **`slice(0, -1)` sur workflow mono-agent** — Pré-existant depuis 1.5, listé pour complétude. Un workflow avec un seul agent produit zéro edge, comportement correct mais non testé explicitement. [AgentDiagram.tsx]
