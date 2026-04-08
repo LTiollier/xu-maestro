@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-04
-last_updated: 2026-04-08  # updated by code-review (2-6 → done)
+last_updated: 2026-04-08  # updated by code-review (2-7a → done)
 project: xu-workflow
 project_key: NOKEY
 tracking_system: file-system
@@ -59,7 +59,7 @@ development_status:
   2-4-stream-sse-evenements-temps-reel-laravel-next-js: done
   2-5-client-sse-et-mise-a-jour-des-stores-zustand: done
   2-6-diagramme-anime-etats-temps-reel-et-transitions-de-handoff: done
-  2-7a-launchbar-lancement-et-annulation-d-un-run: backlog
+  2-7a-launchbar-lancement-et-annulation-d-un-run: done
   2-7b-bulles-sse-sidebar-de-log-et-modal-de-fin-de-run: backlog
   epic-2-retrospective: optional
 
