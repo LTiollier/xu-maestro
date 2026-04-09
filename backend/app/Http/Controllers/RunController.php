@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
 
 class RunController extends Controller
@@ -43,5 +44,22 @@ class RunController extends Controller
             'message' => 'Cancellation requested',
             'runId'   => $id,
         ], 202);
+    }
+
+    public function log(string $id): JsonResponse
+    {
+        $runPath = cache()->get("run:{$id}:path");
+
+        if (! $runPath) {
+            return response()->json(['content' => '']);
+        }
+
+        $sessionPath = $runPath . '/session.md';
+
+        if (! File::exists($sessionPath)) {
+            return response()->json(['content' => '']);
+        }
+
+        return response()->json(['content' => File::get($sessionPath)]);
     }
 }

@@ -32,6 +32,7 @@ class RunService
 
         try {
             $runPath = $this->artifactService->initializeRun($runId, $workflowFile, $brief);
+            cache()->put("run:{$runId}:path", $runPath, 7200); // clé dédiée, non supprimée en finally
             $context = $this->artifactService->getContextContent($runPath);
 
             $startedAt = microtime(true);

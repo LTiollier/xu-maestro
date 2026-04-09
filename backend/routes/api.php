@@ -9,3 +9,4 @@ Route::get('/workflows', [WorkflowController::class, 'index']);
 Route::post('/runs', [RunController::class, 'store']);
 Route::delete('/runs/{id}', [RunController::class, 'destroy']);
 Route::get('/runs/{id}/stream', [SseController::class, 'stream']);
+Route::get('/runs/{id}/log', [RunController::class, 'log']);
