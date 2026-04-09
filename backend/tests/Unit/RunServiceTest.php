@@ -8,6 +8,7 @@ use App\Events\AgentStatusChanged;
 use App\Events\RunCompleted;
 use App\Exceptions\InvalidJsonOutputException;
 use App\Services\ArtifactService;
+use App\Services\CheckpointService;
 use App\Services\RunService;
 use App\Services\YamlService;
 use Illuminate\Support\Facades\Event;
@@ -19,6 +20,7 @@ class RunServiceTest extends TestCase
     private DriverInterface $mockDriver;
     private YamlService $mockYaml;
     private ArtifactService $mockArtifact;
+    private CheckpointService $mockCheckpoint;
     private RunService $service;
 
     protected function setUp(): void
@@ -27,14 +29,15 @@ class RunServiceTest extends TestCase
 
         Event::fake();
 
-        $this->mockDriver   = $this->createMock(DriverInterface::class);
-        $this->mockYaml     = $this->createMock(YamlService::class);
-        $this->mockArtifact = $this->createMock(ArtifactService::class);
+        $this->mockDriver     = $this->createMock(DriverInterface::class);
+        $this->mockYaml       = $this->createMock(YamlService::class);
+        $this->mockArtifact   = $this->createMock(ArtifactService::class);
+        $this->mockCheckpoint = $this->createMock(CheckpointService::class);
 
         $this->mockArtifact->method('initializeRun')->willReturn('/tmp/test-run');
         $this->mockArtifact->method('getContextContent')->willReturn('# context from session.md');
 
-        $this->service = new RunService($this->mockDriver, $this->mockYaml, $this->mockArtifact);
+        $this->service = new RunService($this->mockDriver, $this->mockYaml, $this->mockArtifact, $this->mockCheckpoint);
     }
 
     private function validOutput(string $step = 'analyse', string $status = 'done'): string
@@ -178,7 +181,8 @@ class RunServiceTest extends TestCase
                 '# session content after agent-2'
             );
 
-        $service = new RunService($driver, $yaml, $mockArtifact);
+        $mockCheckpoint = $this->createMock(CheckpointService::class);
+        $service        = new RunService($driver, $yaml, $mockArtifact, $mockCheckpoint);
         $service->execute('test-run-id', 'multi.yaml', 'brief');
 
         $this->assertSame('# initial session content', $calls[0]);
@@ -270,6 +274,38 @@ class RunServiceTest extends TestCase
         $this->mockArtifact->expects($this->once())->method('initializeRun');
 
         $this->service->execute('test-run-id', 'test.yaml', 'brief');
+    }
+
+    #[Test]
+    public function it_writes_post_completion_checkpoint_with_agent_before_done_event(): void
+    {
+        $this->mockYaml->method('load')->willReturn($this->singleAgentWorkflow());
+        $this->mockDriver->method('execute')->willReturn($this->validOutput());
+
+        $writtenData = [];
+        $this->mockCheckpoint
+            ->expects($this->exactly(2))
+            ->method('write')
+            ->willReturnCallback(function (string $runPath, array $data) use (&$writtenData) {
+                $writtenData[] = $data;
+            });
+
+        $this->service->execute('test-run-id', 'test.yaml', 'brief');
+
+        // 1ère écriture (pré-agent) : completedAgents ne contient pas encore l'agent
+        $this->assertEquals([], $writtenData[0]['completedAgents']);
+        $this->assertEquals('agent-one', $writtenData[0]['currentAgent']);
+        $this->assertEquals(0, $writtenData[0]['currentStep']);
+
+        // 2ème écriture (post-completion, NFR6) : completedAgents inclut l'agent
+        $this->assertContains('agent-one', $writtenData[1]['completedAgents']);
+        $this->assertNull($writtenData[1]['currentAgent']); // dernier agent → next = null
+        $this->assertEquals(1, $writtenData[1]['currentStep']); // $stepIndex + 1
+
+        // L'événement 'done' est bien émis après (code séquentiel : write → event)
+        Event::assertDispatched(AgentStatusChanged::class, function (AgentStatusChanged $e) {
+            return $e->status === 'done' && $e->agentId === 'agent-one';
+        });
     }
 
     #[Test]

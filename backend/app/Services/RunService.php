@@ -6,6 +6,7 @@ use App\Drivers\DriverInterface;
 use App\Events\AgentBubble;
 use App\Events\AgentStatusChanged;
 use App\Events\RunCompleted;
+use App\Events\RunError;
 use App\Exceptions\AgentTimeoutException;
 use App\Exceptions\CliExecutionException;
 use App\Exceptions\InvalidJsonOutputException;
@@ -18,6 +19,7 @@ class RunService
         private readonly DriverInterface $driver,
         private readonly YamlService $yamlService,
         private readonly ArtifactService $artifactService,
+        private readonly CheckpointService $checkpointService,
     ) {}
 
     public function execute(string $runId, string $workflowFile, string $brief): void
@@ -37,31 +39,32 @@ class RunService
 
             $startedAt = microtime(true);
 
-            foreach ($workflow['agents'] as $agent) {
+            foreach ($workflow['agents'] as $stepIndex => $agent) {
                 $agentId = $agent['id'];
 
                 if (cache()->get("run:{$runId}:cancelled", false)) {
                     throw new RunCancelledException($runId);
                 }
 
+                // Patch A5 rétro Épic 2 : éviter (int) config(..., 120) qui caste null en 0
                 $timeout = isset($agent['timeout']) && is_int($agent['timeout']) && $agent['timeout'] > 0
                     ? $agent['timeout']
-                    : (int) config('xu-workflow.default_timeout', 120);
+                    : (int) (config('xu-workflow.default_timeout') ?? 120);
 
                 $systemPrompt = $this->resolveSystemPrompt($agent);
 
-                $this->artifactService->writeCheckpoint($runPath, [
+                // Checkpoint PRÉ-AGENT : completedAgents ne contient pas encore $agentId
+                $this->checkpointService->write($runPath, [
                     'runId'           => $runId,
                     'workflowFile'    => $workflowFile,
                     'brief'           => $brief,
                     'completedAgents' => $completedAgents,
                     'currentAgent'    => $agentId,
-                    'currentStep'     => 0,
+                    'currentStep'     => $stepIndex,
                     'context'         => $runPath . '/session.md',
                 ]);
 
-                // Émettre 'working' avant le spawn CLI
-                event(new AgentStatusChanged($runId, $agentId, 'working', 0, ''));
+                event(new AgentStatusChanged($runId, $agentId, 'working', $stepIndex, ''));
 
                 try {
                     $rawOutput = $this->driver->execute(
@@ -70,25 +73,69 @@ class RunService
                         $context,
                         $timeout
                     );
+                    $decoded = $this->validateJsonOutput($agentId, $rawOutput);
                 } catch (CliExecutionException $e) {
-                    event(new AgentStatusChanged($runId, $agentId, 'error', 0, $e->getMessage()));
+                    $msg = $e->getMessage();
+                    event(new AgentStatusChanged($runId, $agentId, 'error', $stepIndex, $msg));
+                    event(new RunError(
+                        runId:          $runId,
+                        agentId:        $agentId,
+                        step:           $stepIndex,
+                        message:        $msg,
+                        checkpointPath: $runPath . '/checkpoint.json',
+                    ));
+                    cache()->put("run:{$runId}:error_emitted", true, 60);
                     throw new CliExecutionException($agentId, $e->exitCode, $e->stderr);
                 } catch (ProcessTimedOutException) {
-                    event(new AgentStatusChanged($runId, $agentId, 'error', 0, "Timeout after {$timeout}s"));
+                    $msg = "Timeout after {$timeout}s";
+                    event(new AgentStatusChanged($runId, $agentId, 'error', $stepIndex, $msg));
+                    event(new RunError(
+                        runId:          $runId,
+                        agentId:        $agentId,
+                        step:           $stepIndex,
+                        message:        $msg,
+                        checkpointPath: $runPath . '/checkpoint.json',
+                    ));
+                    cache()->put("run:{$runId}:error_emitted", true, 60);
                     throw new AgentTimeoutException($agentId, $timeout);
+                } catch (InvalidJsonOutputException $e) {
+                    $msg = "Invalid JSON output from {$agentId}: {$e->getMessage()}";
+                    event(new AgentStatusChanged($runId, $agentId, 'error', $stepIndex, $msg));
+                    event(new RunError(
+                        runId:          $runId,
+                        agentId:        $agentId,
+                        step:           $stepIndex,
+                        message:        $msg,
+                        checkpointPath: $runPath . '/checkpoint.json',
+                    ));
+                    cache()->put("run:{$runId}:error_emitted", true, 60);
+                    throw $e;
                 }
-
-                $decoded = $this->validateJsonOutput($agentId, $rawOutput);
 
                 $this->artifactService->appendAgentOutput($runPath, $agentId, $rawOutput);
 
                 $completedAgents[] = $agentId;
-                $context           = $this->artifactService->getContextContent($runPath);
 
-                // Émettre bubble puis done après succès
+                // Checkpoint POST-COMPLETION (NFR6) : completedAgents inclut maintenant $agentId
+                // Écrit AVANT d'émettre 'done' — garantit qu'aucune progression n'est perdue
+                $nextStepIndex = $stepIndex + 1;
+                $nextAgentId   = $workflow['agents'][$nextStepIndex]['id'] ?? null;
+                $this->checkpointService->write($runPath, [
+                    'runId'           => $runId,
+                    'workflowFile'    => $workflowFile,
+                    'brief'           => $brief,
+                    'completedAgents' => $completedAgents,
+                    'currentAgent'    => $nextAgentId,
+                    'currentStep'     => $nextStepIndex,
+                    'context'         => $runPath . '/session.md',
+                ]);
+
+                $context = $this->artifactService->getContextContent($runPath);
+
+                // Émettre bubble puis done APRÈS écriture checkpoint (NFR6)
                 $bubbleMessage = is_string($decoded['output']) ? $decoded['output'] : json_encode($decoded['output']);
-                event(new AgentBubble($runId, $agentId, $bubbleMessage, 0));
-                event(new AgentStatusChanged($runId, $agentId, 'done', 0, ''));
+                event(new AgentBubble($runId, $agentId, $bubbleMessage, $stepIndex));
+                event(new AgentStatusChanged($runId, $agentId, 'done', $stepIndex, ''));
 
                 $agentResults[] = [
                     'id'     => $agentId,
@@ -102,6 +149,8 @@ class RunService
         } finally {
             cache()->forget("run:{$runId}");
             cache()->forget("run:{$runId}:cancelled");
+            // Note: error_emitted n'est PAS effacé ici — le finally s'exécute avant
+            // que SseController::catch() puisse lire le flag. Le TTL 60s gère le cleanup.
             cache()->put("run:{$runId}:done", true, 3600);
         }
     }

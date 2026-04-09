@@ -104,3 +104,11 @@
 - **Race SSE/annulation — `run.completed` vs `resetRun()`** — Si un événement SSE `run.completed` arrive juste avant le clic "Annuler", `setRunCompleted` puis `resetRun()` s'exécutent en séquence, écrasant l'état `completed`. Contrainte architecturale concurrente (non fixable sans state machine formelle). [LaunchBar.tsx]
 - **`WorkflowSelector` non désactivé pendant un run actif** — L'utilisateur peut changer de workflow alors qu'un run est en cours, laissant un état incohérent (run A tourne, workflow B affiché). Nécessite soit de désactiver le `Select` en état `running`, soit de gérer la transition explicitement. [WorkflowSelector.tsx]
 - **États agents non réinitialisés après `run.completed`/`run.error` via SSE** — `agentStatusStore.resetAgents()` n'est appelé qu'au prochain lancement. Les statuts visuels du run précédent persistent dans le diagramme jusqu'à un nouveau clic "Lancer". À gérer dans 2.7b (post-run cleanup). [LaunchBar.tsx, agentStatusStore.ts]
+
+## Deferred from: code review of 3-1-checkpoint-step-level-ecriture-et-lecture (2026-04-09)
+
+- **`sanitizeEnvCredentials` dupliquée** — Logique identique dans `ArtifactService` et `CheckpointService`. À extraire dans un trait ou une classe utilitaire partagée lors d'un refactor futur. [CheckpointService.php:47, ArtifactService.php:85]
+- **`checkpointService->write()` failure non gérée** — `File::put()` peut lever une exception (disk full, permissions) non catchée. Même pattern pre-existing dans `ArtifactService`. À adresser lors d'un hardening global des I/O filesystem. [CheckpointService.php:write()]
+- **`RunCancelledException` laisse un checkpoint stale** — Si l'annulation survient au début de l'itération (après checkpoint pré-agent écrit), le dernier checkpoint pointe un agent comme `currentAgent` qui a peut-être déjà été complété. Story 3.4 (retry) devra gérer ce cas. [RunService.php:~47]
+- **Regex `sanitizeEnvCredentials` incomplète** — Ne couvre pas les conventions `GITHUB_PAT`, `STRIPE_SK`, `DB_PASS`. Pre-existing, partagé avec `ArtifactService`. À élargir lors d'un audit sécurité global. [CheckpointService.php, ArtifactService.php]
+- **`resolveSystemPrompt` silencieux sur fichier absent** — Retourne `''` sans log ni erreur si le fichier `system_prompt_file` n'existe pas. Pre-existing. [RunService.php:resolveSystemPrompt()]

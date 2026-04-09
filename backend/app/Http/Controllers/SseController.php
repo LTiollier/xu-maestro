@@ -32,13 +32,18 @@ class SseController extends Controller
             try {
                 $this->runService->execute($id, $config['workflowFile'], $config['brief']);
             } catch (\Throwable $e) {
-                event(new RunError(
-                    runId:          $id,
-                    agentId:        'unknown',
-                    step:           0,
-                    message:        $e->getMessage(),
-                    checkpointPath: '',
-                ));
+                // RunService émet RunError pour les erreurs d'agents connues (CliExecutionException,
+                // ProcessTimedOutException, InvalidJsonOutputException) et pose le flag error_emitted.
+                // Ce catch-all ne ré-émet que pour les erreurs inattendues non gérées dans RunService.
+                if (! cache()->has("run:{$id}:error_emitted")) {
+                    event(new RunError(
+                        runId:          $id,
+                        agentId:        'unknown',
+                        step:           0,
+                        message:        $e->getMessage(),
+                        checkpointPath: '',
+                    ));
+                }
             }
         }, 200, [
             'Content-Type'      => 'text/event-stream',
