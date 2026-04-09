@@ -61,7 +61,7 @@ development_status:
   2-6-diagramme-anime-etats-temps-reel-et-transitions-de-handoff: done
   2-7a-launchbar-lancement-et-annulation-d-un-run: done
   2-7b-bulles-sse-sidebar-de-log-et-modal-de-fin-de-run: done
-  epic-2-retrospective: optional
+  epic-2-retrospective: done  # 2026-04-09 — epic-2-retro-2026-04-09.md
 
   # Epic 3: Résilience et récupération d'erreurs
   epic-3: backlog
