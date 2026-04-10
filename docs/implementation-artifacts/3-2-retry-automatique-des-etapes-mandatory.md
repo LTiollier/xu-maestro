@@ -1,6 +1,6 @@
 # Story 3.2 : Retry automatique des étapes `mandatory`
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -24,29 +24,49 @@ so that les étapes critiques ont une chance de récupérer sans intervention ma
 
 ## Tasks / Subtasks
 
-- [ ] **T1 — Modifier `RunService` : boucle retry** (AC 1–6)
-  - [ ] Lire `$isMandatory` et `$maxRetries` depuis `$agent` avec valeurs par défaut sûres (même pattern que `$timeout`)
-  - [ ] Envelopper le bloc try/catch interne dans `do { } while ($attempt <= $maxRetries)`
-  - [ ] Incrémenter `$attempt` en tête de boucle ; check cancellation avant chaque tentative
-  - [ ] Pour `$attempt > 1` : émettre `AgentBubble` info + `AgentStatusChanged('working')` avant d'appeler le driver
-  - [ ] Dans chaque catch : si `$attempt <= $maxRetries` → `continue` (pas d'events erreur) ; sinon → émettre les events d'erreur finaux + throw (comportement 3.1 conservé)
+- [x] **T1 — Modifier `RunService` : boucle retry** (AC 1–6)
+  - [x] Lire `$isMandatory` et `$maxRetries` depuis `$agent` avec valeurs par défaut sûres (même pattern que `$timeout`)
+  - [x] Envelopper le bloc try/catch interne dans `do { } while ($attempt <= $maxRetries)`
+  - [x] Incrémenter `$attempt` en tête de boucle ; check cancellation avant chaque tentative
+  - [x] Pour `$attempt > 1` : émettre `AgentBubble` info + `AgentStatusChanged('working')` avant d'appeler le driver
+  - [x] Dans chaque catch : si `$attempt <= $maxRetries` → `continue` (pas d'events erreur) ; sinon → émettre les events d'erreur finaux + throw (comportement 3.1 conservé)
 
-- [ ] **T2 — Mettre à jour `workflows/example.yaml`** (AC 1)
-  - [ ] Ajouter `mandatory: true` et `max_retries: 2` à l'agent exemple (avec commentaire explicatif)
+- [x] **T2 — Mettre à jour `workflows/example.yaml`** (AC 1)
+  - [x] Ajouter `mandatory: true` et `max_retries: 2` à l'agent exemple (avec commentaire explicatif)
 
-- [ ] **T3 — Créer `RunServiceRetryTest`** (AC 1–6)
-  - [ ] Créer `backend/tests/Unit/RunServiceRetryTest.php`
-  - [ ] Test : agent mandatory échoue 1×, puis succède → `RunCompleted` émis, `AgentBubble` info retry visible
-  - [ ] Test : agent mandatory épuise tous ses retries → `RunError` émis une seule fois (après dernier échec)
-  - [ ] Test : `max_retries: N` → driver appelé exactement N+1 fois
-  - [ ] Test : agent non-mandatory échoue → `RunError` immédiat, driver appelé 1× seulement
-  - [ ] Test : `mandatory: true, max_retries: 0` → `RunError` immédiat, 1 appel driver
-  - [ ] Test : cancel pendant retry loop → `RunCancelledException`, driver n'est pas rappelé
-  - [ ] Test : retry sur `ProcessTimedOutException` fonctionne (même pattern que CLI failure)
-  - [ ] Test : retry sur `InvalidJsonOutputException` fonctionne
+- [x] **T3 — Créer `RunServiceRetryTest`** (AC 1–6)
+  - [x] Créer `backend/tests/Unit/RunServiceRetryTest.php`
+  - [x] Test : agent mandatory échoue 1×, puis succède → `RunCompleted` émis, `AgentBubble` info retry visible
+  - [x] Test : agent mandatory épuise tous ses retries → `RunError` émis une seule fois (après dernier échec)
+  - [x] Test : `max_retries: N` → driver appelé exactement N+1 fois
+  - [x] Test : agent non-mandatory échoue → `RunError` immédiat, driver appelé 1× seulement
+  - [x] Test : `mandatory: true, max_retries: 0` → `RunError` immédiat, 1 appel driver
+  - [x] Test : cancel pendant retry loop → `RunCancelledException`, driver n'est pas rappelé
+  - [x] Test : retry sur `ProcessTimedOutException` fonctionne (même pattern que CLI failure)
+  - [x] Test : retry sur `InvalidJsonOutputException` fonctionne
 
-- [ ] **T4 — Vérification** (AC 1–6)
-  - [ ] `php artisan test` : ≥82 tests verts (74 existants + 8 nouveaux), 0 régression
+- [x] **T4 — Vérification** (AC 1–6)
+  - [x] `php artisan test` : 83/83 tests verts (74 existants + 8 nouveaux + 1 pré-existant bonus), 0 régression
+
+### Review Findings (2026-04-10)
+
+- [x] [Review][Decision] Timing du bubble AC3 — résolu : bubble émis dans chaque catch après l'échec ("Tentative X/N échouée — relance en cours..."), `$totalAttempts` extrait avant la boucle [RunService.php]
+- [x] [Review][Patch] `$totalAttempts` recalculé à chaque itération — extrait avant la boucle [RunService.php]
+- [x] [Review][Patch] Test manquant : `max_retries` fourni en string YAML — ajouté `it_ignores_max_retries_when_provided_as_string` [RunServiceRetryTest.php]
+- [x] [Review][Patch] Test manquant : annulation mid-retry — ajouté `it_does_not_emit_run_error_when_cancelled_during_retry` [RunServiceRetryTest.php]
+- [x] [Review][Patch] Test manquant : séquence d'exceptions mixtes — ajouté `it_retries_across_different_exception_types` [RunServiceRetryTest.php]
+- [x] [Review][Patch] Test manquant : workflow 2 agents — ajouté `it_executes_second_agent_normally_after_first_agent_retries` [RunServiceRetryTest.php]
+- [x] [Review][Patch] Test manquant : AC3 pour N>2 retries — ajouté `it_emits_retry_bubbles_with_correct_denominator_for_multiple_retries` [RunServiceRetryTest.php]
+- [x] [Review][Defer] Pas de cap sur `max_retries` — `max_retries: 9999999` accepté silencieusement [RunService.php:58] — deferred, acceptable MVP
+- [x] [Review][Defer] `mandatory: "true"` (string YAML) silencieusement ignoré — `=== true` strictement booléen [RunService.php:57] — deferred, comportement YAML standard
+- [x] [Review][Defer] Annulation non détectée pendant l'exécution du driver — coopérative non wired — deferred, pre-existing
+- [x] [Review][Defer] Checkpoint pré-agent non mis à jour entre les retries — crash mid-retry → reprise depuis état pré-agent correct [RunService.php:62] — deferred, intentionnel par spec
+- [x] [Review][Defer] `error_emitted` scope run et non agent, `finally` ne le reset pas — deferred, pre-existing, documenté
+- [x] [Review][Defer] TTL `error_emitted` hardcodé à 60s sans relation avec les timeouts du run [RunService.php:111,126,141] — deferred, pre-existing
+- [x] [Review][Defer] `error_emitted` tripliqué dans 3 catch — risque de divergence si 4ème type d'exception ajouté [RunService.php:111,126,141] — deferred, architectural
+- [x] [Review][Defer] Output des tentatives échouées perdu — seul le succès final est appendé à session.md — deferred, out of scope
+- [x] [Review][Defer] Pas de check annulation après `break` réussi — comportement pre-existing du foreach — deferred, pre-existing
+- [x] [Review][Defer] `max_retries` sur agent non-mandatory silencieusement ignoré — intentionnel par spec — deferred, by design
 
 ---
 
@@ -526,8 +546,24 @@ workflows/example.yaml                           ← MODIFIER (ajouter mandatory
 
 ### Agent Model Used
 
+claude-sonnet-4-6
+
 ### Debug Log References
+
+- Boucle `do { } while ($attempt <= $maxRetries)` : le `continue` dans les `catch` saute à la condition `while` en PHP, ce qui est le comportement souhaité pour les retries.
+- Le check cancellation est positionné EN TÊTE de boucle (avant l'appel driver) pour couvrir le cas où l'utilisateur annule entre deux tentatives.
+- `$isMandatory` + `$maxRetries` lus sans modifier `YamlService` — cohérent avec le pattern `$timeout` existant.
+- `error_emitted` non effacé en `finally` (commentaire conservé dans RunService) — invariant intentionnel, race condition avec SseController.
 
 ### Completion Notes List
 
+- `RunService` : boucle do-while retry autour du try/catch interne ; `$isMandatory` / `$maxRetries` lus avec valeurs par défaut sûres ; check cancellation en tête de boucle ; `AgentBubble` info + `AgentStatusChanged('working')` ré-émis pour les tentatives > 1 ; `error_emitted` posé UNIQUEMENT sur l'échec final
+- `workflows/example.yaml` : `mandatory: true` + `max_retries: 2` ajoutés avec commentaires explicatifs
+- `RunServiceRetryTest` : 8 tests couvrant success-after-retry, N+1 appels driver, RunError unique après épuisement, non-retry sans mandatory, max_retries:0, cancellation mid-retry, ProcessTimedOutException, InvalidJsonOutputException
+- Suite complète : 83/83 verts (235 assertions), 0 régression
+
 ### File List
+
+- backend/app/Services/RunService.php (modifié)
+- backend/tests/Unit/RunServiceRetryTest.php (créé)
+- workflows/example.yaml (modifié)

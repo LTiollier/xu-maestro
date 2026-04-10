@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-04
-last_updated: 2026-04-09  # updated by create-story (3-2 → ready-for-dev)
+last_updated: 2026-04-10  # updated by code-review (3-2 → done)
 project: xu-workflow
 project_key: NOKEY
 tracking_system: file-system
@@ -66,7 +66,7 @@ development_status:
   # Epic 3: Résilience et récupération d'erreurs
   epic-3: in-progress
   3-1-checkpoint-step-level-ecriture-et-lecture: done
-  3-2-retry-automatique-des-etapes-mandatory: ready-for-dev
+  3-2-retry-automatique-des-etapes-mandatory: done
   3-3-alerte-d-erreur-localisee-et-bubblebox-error: backlog
   3-4-retry-manuel-depuis-le-dernier-checkpoint: backlog
   epic-3-retrospective: optional

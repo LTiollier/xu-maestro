@@ -53,6 +53,12 @@ class RunService
 
                 $systemPrompt = $this->resolveSystemPrompt($agent);
 
+                // Retry : même pattern que $timeout (champ optionnel, valeurs par défaut sûres)
+                $isMandatory = isset($agent['mandatory']) && $agent['mandatory'] === true;
+                $maxRetries  = ($isMandatory && isset($agent['max_retries']) && is_int($agent['max_retries']) && $agent['max_retries'] > 0)
+                    ? $agent['max_retries']
+                    : 0;
+
                 // Checkpoint PRÉ-AGENT : completedAgents ne contient pas encore $agentId
                 $this->checkpointService->write($runPath, [
                     'runId'           => $runId,
@@ -66,51 +72,77 @@ class RunService
 
                 event(new AgentStatusChanged($runId, $agentId, 'working', $stepIndex, ''));
 
-                try {
-                    $rawOutput = $this->driver->execute(
-                        $workflow['project_path'],
-                        $systemPrompt,
-                        $context,
-                        $timeout
-                    );
-                    $decoded = $this->validateJsonOutput($agentId, $rawOutput);
-                } catch (CliExecutionException $e) {
-                    $msg = $e->getMessage();
-                    event(new AgentStatusChanged($runId, $agentId, 'error', $stepIndex, $msg));
-                    event(new RunError(
-                        runId:          $runId,
-                        agentId:        $agentId,
-                        step:           $stepIndex,
-                        message:        $msg,
-                        checkpointPath: $runPath . '/checkpoint.json',
-                    ));
-                    cache()->put("run:{$runId}:error_emitted", true, 60);
-                    throw new CliExecutionException($agentId, $e->exitCode, $e->stderr);
-                } catch (ProcessTimedOutException) {
-                    $msg = "Timeout after {$timeout}s";
-                    event(new AgentStatusChanged($runId, $agentId, 'error', $stepIndex, $msg));
-                    event(new RunError(
-                        runId:          $runId,
-                        agentId:        $agentId,
-                        step:           $stepIndex,
-                        message:        $msg,
-                        checkpointPath: $runPath . '/checkpoint.json',
-                    ));
-                    cache()->put("run:{$runId}:error_emitted", true, 60);
-                    throw new AgentTimeoutException($agentId, $timeout);
-                } catch (InvalidJsonOutputException $e) {
-                    $msg = "Invalid JSON output from {$agentId}: {$e->getMessage()}";
-                    event(new AgentStatusChanged($runId, $agentId, 'error', $stepIndex, $msg));
-                    event(new RunError(
-                        runId:          $runId,
-                        agentId:        $agentId,
-                        step:           $stepIndex,
-                        message:        $msg,
-                        checkpointPath: $runPath . '/checkpoint.json',
-                    ));
-                    cache()->put("run:{$runId}:error_emitted", true, 60);
-                    throw $e;
-                }
+                $attempt       = 0;
+                $totalAttempts = $maxRetries + 1;
+                do {
+                    $attempt++;
+
+                    if (cache()->get("run:{$runId}:cancelled", false)) {
+                        throw new RunCancelledException($runId);
+                    }
+
+                    try {
+                        $rawOutput = $this->driver->execute(
+                            $workflow['project_path'],
+                            $systemPrompt,
+                            $context,
+                            $timeout
+                        );
+                        $decoded = $this->validateJsonOutput($agentId, $rawOutput);
+                        break; // succès — sortir de la boucle
+                    } catch (CliExecutionException $e) {
+                        if ($attempt <= $maxRetries) {
+                            event(new AgentBubble($runId, $agentId, "Tentative {$attempt}/{$totalAttempts} échouée — relance en cours...", $stepIndex));
+                            event(new AgentStatusChanged($runId, $agentId, 'working', $stepIndex, ''));
+                            continue;
+                        }
+                        $msg = $e->getMessage();
+                        event(new AgentStatusChanged($runId, $agentId, 'error', $stepIndex, $msg));
+                        event(new RunError(
+                            runId:          $runId,
+                            agentId:        $agentId,
+                            step:           $stepIndex,
+                            message:        $msg,
+                            checkpointPath: $runPath . '/checkpoint.json',
+                        ));
+                        cache()->put("run:{$runId}:error_emitted", true, 60);
+                        throw new CliExecutionException($agentId, $e->exitCode, $e->stderr);
+                    } catch (ProcessTimedOutException) {
+                        if ($attempt <= $maxRetries) {
+                            event(new AgentBubble($runId, $agentId, "Tentative {$attempt}/{$totalAttempts} échouée — relance en cours...", $stepIndex));
+                            event(new AgentStatusChanged($runId, $agentId, 'working', $stepIndex, ''));
+                            continue;
+                        }
+                        $msg = "Timeout after {$timeout}s";
+                        event(new AgentStatusChanged($runId, $agentId, 'error', $stepIndex, $msg));
+                        event(new RunError(
+                            runId:          $runId,
+                            agentId:        $agentId,
+                            step:           $stepIndex,
+                            message:        $msg,
+                            checkpointPath: $runPath . '/checkpoint.json',
+                        ));
+                        cache()->put("run:{$runId}:error_emitted", true, 60);
+                        throw new AgentTimeoutException($agentId, $timeout);
+                    } catch (InvalidJsonOutputException $e) {
+                        if ($attempt <= $maxRetries) {
+                            event(new AgentBubble($runId, $agentId, "Tentative {$attempt}/{$totalAttempts} échouée — relance en cours...", $stepIndex));
+                            event(new AgentStatusChanged($runId, $agentId, 'working', $stepIndex, ''));
+                            continue;
+                        }
+                        $msg = "Invalid JSON output from {$agentId}: {$e->getMessage()}";
+                        event(new AgentStatusChanged($runId, $agentId, 'error', $stepIndex, $msg));
+                        event(new RunError(
+                            runId:          $runId,
+                            agentId:        $agentId,
+                            step:           $stepIndex,
+                            message:        $msg,
+                            checkpointPath: $runPath . '/checkpoint.json',
+                        ));
+                        cache()->put("run:{$runId}:error_emitted", true, 60);
+                        throw $e;
+                    }
+                } while ($attempt <= $maxRetries);
 
                 $this->artifactService->appendAgentOutput($runPath, $agentId, $rawOutput);
 

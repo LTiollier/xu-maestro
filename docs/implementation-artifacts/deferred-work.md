@@ -105,6 +105,17 @@
 - **`WorkflowSelector` non désactivé pendant un run actif** — L'utilisateur peut changer de workflow alors qu'un run est en cours, laissant un état incohérent (run A tourne, workflow B affiché). Nécessite soit de désactiver le `Select` en état `running`, soit de gérer la transition explicitement. [WorkflowSelector.tsx]
 - **États agents non réinitialisés après `run.completed`/`run.error` via SSE** — `agentStatusStore.resetAgents()` n'est appelé qu'au prochain lancement. Les statuts visuels du run précédent persistent dans le diagramme jusqu'à un nouveau clic "Lancer". À gérer dans 2.7b (post-run cleanup). [LaunchBar.tsx, agentStatusStore.ts]
 
+## Deferred from: code review of 3-2-retry-automatique-des-etapes-mandatory (2026-04-10)
+
+- **Pas de cap sur `max_retries`** — `max_retries: 9999999` accepté silencieusement par `is_int()`. Ajouter un cap raisonnable (ex: <= 10) si des workflows externs sont possibles. [RunService.php:58]
+- **`mandatory: "true"` (string YAML) silencieusement ignoré** — `=== true` strict : `mandatory: "true"` ou `mandatory: 1` ne déclenche pas de retry. Comportement standard YAML (unquoted = bool natif), documenté dans example.yaml. [RunService.php:57]
+- **Annulation non détectée en cours d'exécution driver** — Le check `run:{id}:cancelled` est coopératif (vérifié en tête de boucle), pas au milieu d'un long appel driver. Pre-existing avant retry. [RunService.php:79]
+- **Checkpoint pré-agent non mis à jour entre les retries** — Le checkpoint reste figé à l'état pré-agent pendant tous les retries. Intentionnel par spec 3.2 ; Story 3.4 devra décider si les retries doivent écrire un checkpoint intermédiaire avec `attempt`. [RunService.php:62]
+- **`error_emitted` tripliqué dans 3 catch** — La logique `cache()->put(error_emitted)` est dupliquée dans les 3 catch finaux. Risque de divergence si un 4ème type d'exception est ajouté sans ajouter la ligne. À centraliser (ex: méthode `emitFinalError()`) lors d'un refactor global de RunService. [RunService.php:111,126,141]
+- **Output des tentatives échouées perdu** — L'output (stderr, JSON invalide) de chaque tentative échouée est discardé. Seul l'output du succès final est appendé à session.md. Utile pour le debug de flapping agents ; à adresser si un système de log de run est introduit.
+- **`error_emitted` TTL hardcodé 60s** — Pas de relation avec les timeouts configurés du run. Pre-existing. [RunService.php:111]
+- **`max_retries` sur agent non-mandatory silencieusement ignoré** — Un agent avec `max_retries: 2` mais sans `mandatory: true` ne retrye pas. Intentionnel par spec. Envisager un warning dans `YamlService` si `max_retries > 0` et `mandatory` absent.
+
 ## Deferred from: code review of 3-1-checkpoint-step-level-ecriture-et-lecture (2026-04-09)
 
 - **`sanitizeEnvCredentials` dupliquée** — Logique identique dans `ArtifactService` et `CheckpointService`. À extraire dans un trait ou une classe utilitaire partagée lors d'un refactor futur. [CheckpointService.php:47, ArtifactService.php:85]

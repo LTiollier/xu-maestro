@@ -4,6 +4,8 @@ agents:
   - id: agent-one
     engine: claude-code
     timeout: 60
+    mandatory: true      # relancé automatiquement en cas d'échec (jusqu'à max_retries fois)
+    max_retries: 2       # 2 retries → 3 tentatives au total (défaut : 0 si absent)
     steps:
       - "Étape 1 — Analyser le brief"
     system_prompt: "Tu es un agent de démonstration."
