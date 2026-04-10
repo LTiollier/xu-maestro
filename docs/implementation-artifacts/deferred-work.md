@@ -123,3 +123,11 @@
 - **`RunCancelledException` laisse un checkpoint stale** — Si l'annulation survient au début de l'itération (après checkpoint pré-agent écrit), le dernier checkpoint pointe un agent comme `currentAgent` qui a peut-être déjà été complété. Story 3.4 (retry) devra gérer ce cas. [RunService.php:~47]
 - **Regex `sanitizeEnvCredentials` incomplète** — Ne couvre pas les conventions `GITHUB_PAT`, `STRIPE_SK`, `DB_PASS`. Pre-existing, partagé avec `ArtifactService`. À élargir lors d'un audit sécurité global. [CheckpointService.php, ArtifactService.php]
 - **`resolveSystemPrompt` silencieux sur fichier absent** — Retourne `''` sans log ni erreur si le fichier `system_prompt_file` n'existe pas. Pre-existing. [RunService.php:resolveSystemPrompt()]
+
+## Deferred from: code review of 3-3-alerte-d-erreur-localisee-et-bubblebox-error (2026-04-10)
+
+- **`AgentDiagram` silent failure sans workflow** — Quand `selectedWorkflow` est null, le diagramme rend un conteneur 400px vide sans feedback utilisateur. Pre-existing depuis 1.5. [AgentDiagram.tsx]
+- **`StepItem` status toujours `"pending"`** — Tous les steps s'affichent comme pending indépendamment de l'avancement réel de l'agent. Granularité step-level prévue après Epic 3. Pre-existing depuis 1.5. [AgentCard.tsx]
+- **Performance `useMemo` sur `agents`** — Le memo recalcule tous les nodes/edges à chaque mise à jour du store `agents` (statut, bubble, error). Impact minimal (≤5 agents, localhost). Pre-existing depuis 2.6. [AgentDiagram.tsx]
+- **Badge état sans accessibilité ARIA** — `Badge` affiche le statut visuellement mais sans `role="status"` ni `aria-live` — changements d'état non annoncés aux lecteurs d'écran. Pre-existing depuis 1.5. [AgentCard.tsx]
+- **`RunErrorEvent.agentId` non validé dans le parser** — Le type TypeScript déclare `agentId: string` comme requis mais `parseRunError` ne valide pas ce champ. Le listener a un guard `if (payload.agentId)` qui masque la divergence. Pre-existing depuis 2.4/2.5. [sseEventParser.ts, sse.types.ts]
