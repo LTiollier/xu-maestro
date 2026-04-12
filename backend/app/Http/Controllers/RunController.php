@@ -13,10 +13,6 @@ use Illuminate\Support\Str;
 
 class RunController extends Controller
 {
-    public function __construct(
-        private readonly CheckpointService $checkpointService,
-    ) {}
-
     public function index(): AnonymousResourceCollection
     {
         $runsPath = config('xu-workflow.runs_path');
@@ -119,7 +115,7 @@ class RunController extends Controller
         ], 202);
     }
 
-    public function retryStep(string $id): JsonResponse
+    public function retryStep(string $id, CheckpointService $checkpointService): JsonResponse
     {
         $runPath = cache()->get("run:{$id}:path");
 
@@ -131,7 +127,7 @@ class RunController extends Controller
         }
 
         try {
-            $checkpoint = $this->checkpointService->read($runPath);
+            $checkpoint = $checkpointService->read($runPath);
         } catch (\RuntimeException $e) {
             return response()->json([
                 'message' => $e->getMessage(),
@@ -155,18 +151,27 @@ class RunController extends Controller
 
     public function log(string $id): JsonResponse
     {
-        $runPath = cache()->get("run:{$id}:path");
+        try {
+            $runPath = cache()->get("run:{$id}:path");
 
-        if (! $runPath) {
-            return response()->json(['content' => '']);
+            if (! $runPath) {
+                return response()->json(['content' => '']);
+            }
+
+            $sessionPath = $runPath . '/session.md';
+
+            if (! File::exists($sessionPath)) {
+                return response()->json(['content' => '']);
+            }
+
+            return response()->json(['content' => File::get($sessionPath)]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'error'   => $e->getMessage(),
+                'trace'   => $e->getTraceAsString(),
+                'runId'   => $id,
+                'runPath' => $runPath ?? 'not set'
+            ], 500);
         }
-
-        $sessionPath = $runPath . '/session.md';
-
-        if (! File::exists($sessionPath)) {
-            return response()->json(['content' => '']);
-        }
-
-        return response()->json(['content' => File::get($sessionPath)]);
     }
 }

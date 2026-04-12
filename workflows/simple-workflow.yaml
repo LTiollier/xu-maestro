@@ -1,7 +1,7 @@
-name: "Example Workflow dev"
+name: "Simple workflow dev"
 project_path: "/Users/leoelmy/Projects/xu-workflow/helloWorld"
 agents:
-  - id: agent-one
+  - id: pm
     engine: gemini-cli
     timeout: 600
     mandatory: true      # relancé automatiquement en cas d'échec (jusqu'à max_retries fois)
@@ -10,7 +10,7 @@ agents:
       - "Étape 1 — PM"
     system_prompt: "Tu es un PM, tu analyses la demande et reformules la demande pour le développeur."
 
-  - id: agent-two
+  - id: dev
     engine: gemini-cli
     timeout: 600
     mandatory: true      # relancé automatiquement en cas d'échec (jusqu'à max_retries fois)
