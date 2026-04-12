@@ -263,7 +263,24 @@ class RunService
 
     private function validateJsonOutput(string $agentId, string $rawOutput): array
     {
-        $decoded = json_decode($rawOutput, true);
+        $decoded = json_decode(trim($rawOutput), true);
+
+        if ($decoded === null || ! is_array($decoded)) {
+            // Tentative d'extraction si du texte de narration pollue la sortie (ex: narration de tool use)
+            // On cherche l'objet JSON le plus probable dans la chaîne (balancé en { })
+            // Regex récursive pour les accolades balancées
+            $regex = '/\{(?:[^{}]|(?R))*\}/s';
+            if (preg_match_all($regex, $rawOutput, $matches)) {
+                // On teste les candidats en partant de la fin (car l'agent répond souvent JSON à la fin)
+                foreach (array_reverse($matches[0]) as $candidate) {
+                    $test = json_decode($candidate, true);
+                    if ($test !== null && is_array($test)) {
+                        $decoded = $test;
+                        break;
+                    }
+                }
+            }
+        }
 
         if ($decoded === null || ! is_array($decoded)) {
             throw new InvalidJsonOutputException($agentId, $rawOutput, 'Not valid JSON object');

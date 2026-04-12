@@ -3,7 +3,7 @@ project_path: "/Users/leoelmy/Projects/xu-workflow/helloWorld"
 agents:
   - id: agent-one
     engine: gemini-cli
-    timeout: 60
+    timeout: 600
     mandatory: true      # relancé automatiquement en cas d'échec (jusqu'à max_retries fois)
     max_retries: 2       # 2 retries → 3 tentatives au total (défaut : 0 si absent)
     steps:
@@ -12,7 +12,7 @@ agents:
 
   - id: agent-two
     engine: gemini-cli
-    timeout: 60
+    timeout: 600
     mandatory: true      # relancé automatiquement en cas d'échec (jusqu'à max_retries fois)
     max_retries: 2       # 2 retries → 3 tentatives au total (défaut : 0 si absent)
     steps:
