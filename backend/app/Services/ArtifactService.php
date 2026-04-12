@@ -68,6 +68,26 @@ class ArtifactService
     }
 
     /**
+     * Finalise un run en écrivant result.json avec le statut terminal, la durée et le nombre d'agents.
+     *
+     * Appelé par RunService à la fin de chaque exécution (completed, error, cancelled).
+     * Sanitise les credentials avant écriture (NFR12).
+     */
+    public function finalizeRun(string $runPath, string $status, int $duration, int $agentCount): void
+    {
+        $data = [
+            'status'      => $status,
+            'duration'    => $duration,
+            'agentCount'  => $agentCount,
+            'completedAt' => now()->toIso8601String(),
+        ];
+
+        $json      = json_encode($data, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR);
+        $sanitized = $this->sanitizeEnvCredentials($json);
+        File::put($runPath . '/result.json', $sanitized);
+    }
+
+    /**
      * Lit et retourne le contenu courant de session.md.
      *
      * Ce contenu est passé comme $context au driver pour le prochain agent (FR15).

@@ -6,7 +6,9 @@ use App\Http\Controllers\WorkflowController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/workflows', [WorkflowController::class, 'index']);
+Route::get('/runs', [RunController::class, 'index']);
 Route::post('/runs', [RunController::class, 'store']);
 Route::delete('/runs/{id}', [RunController::class, 'destroy']);
 Route::get('/runs/{id}/stream', [SseController::class, 'stream']);
 Route::get('/runs/{id}/log', [RunController::class, 'log']);
+Route::post('/runs/{id}/retry-step', [RunController::class, 'retryStep']);

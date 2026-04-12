@@ -25,6 +25,29 @@ class SseController extends Controller
         return new StreamedResponse(function () use ($id, $config) {
             $this->sseStreamService->setHeaders();
 
+            // Détection retry : pull() consomme atomiquement le checkpoint (get + forget).
+            // Si présent, le run reprend depuis le checkpoint sans passer par la garde done.
+            $retryCheckpoint = cache()->pull("run:{$id}:retry_checkpoint");
+            if ($retryCheckpoint) {
+                try {
+                    $this->runService->executeFromCheckpoint($id, $retryCheckpoint);
+                } catch (\Throwable $e) {
+                    if (! cache()->has("run:{$id}:error_emitted")) {
+                        event(new RunError(
+                            runId:          $id,
+                            agentId:        'unknown',
+                            step:           0,
+                            message:        $e->getMessage(),
+                            checkpointPath: '',
+                        ));
+                    }
+                } finally {
+                    // Garantit que done est posé même si executeFromCheckpoint lève avant son propre try/finally
+                    cache()->put("run:{$id}:done", true, 3600);
+                }
+                return;
+            }
+
             if (cache()->has("run:{$id}") || cache()->has("run:{$id}:done")) {
                 return;
             }

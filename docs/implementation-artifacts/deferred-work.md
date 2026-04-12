@@ -131,3 +131,15 @@
 - **Performance `useMemo` sur `agents`** — Le memo recalcule tous les nodes/edges à chaque mise à jour du store `agents` (statut, bubble, error). Impact minimal (≤5 agents, localhost). Pre-existing depuis 2.6. [AgentDiagram.tsx]
 - **Badge état sans accessibilité ARIA** — `Badge` affiche le statut visuellement mais sans `role="status"` ni `aria-live` — changements d'état non annoncés aux lecteurs d'écran. Pre-existing depuis 1.5. [AgentCard.tsx]
 - **`RunErrorEvent.agentId` non validé dans le parser** — Le type TypeScript déclare `agentId: string` comme requis mais `parseRunError` ne valide pas ce champ. Le listener a un guard `if (payload.agentId)` qui masque la divergence. Pre-existing depuis 2.4/2.5. [sseEventParser.ts, sse.types.ts]
+
+## Deferred from: code review of 4-1-liste-des-runs-passes (2026-04-12)
+
+- **`agentCount = 0` pour les runs annulés via `execute()`** — `completedAgents` est local à `executeAgents()` et n'est pas accessible depuis le `catch (RunCancelledException)` dans `execute()`. Le count réel des agents complétés est perdu. Impact faible (historique montre 0 agents pour les runs annulés). Refactorer si une précision accrue est nécessaire. [RunService.php:43]
+- **Pas de pagination sur `File::directories()`** — `RunController::index()` charge l'intégralité du dossier runs/ à chaque requête. Performance acceptable pour MVP localhost. À adresser par offset/limit si l'historique devient volumineux. [RunController.php:30]
+- **`finalizeRun()` peut masquer l'exception originale** — Dans les blocs catch de `executeAgents()`, si `finalizeRun()` lève une exception (disque plein, permissions), elle remplace l'exception d'origine. Pattern pré-existant dans le projet (pas de wrapping d'exceptions I/O). [RunService.php:189,207,225,258]
+
+## Deferred from: code review of 3-4-retry-manuel-depuis-le-dernier-checkpoint (2026-04-11)
+
+- **`retryStep` sans garde contre run encore actif** — `RunController::retryStep()` n'empêche pas un retry si `run:{id}` est toujours en cache (run en cours). Par design : le bouton Retry n'est visible que si le run est en état error côté UI. Pas de double-protection serveur. [RunController.php]
+- **`checkpoint['runId']` non validé contre l'URL `$id`** — Le checkpoint lu depuis le disque contient un `runId` non comparé à l'URL `$id`. En pratique impossible (checkpoint toujours écrit avec le bon runId), mais pas de validation défensive. [RunController.php]
+- **`retry_checkpoint` reste 3600s si le client ne reconnecte jamais** — Après POST `/retry-step`, si l'utilisateur ferme le navigateur, le checkpoint reste en cache 1h. Toute reconnexion ultérieure déclencherait un retry automatique non sollicité. Compromis TTL acceptable pour MVP. [RunController.php, SseController.php]
