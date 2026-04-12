@@ -167,7 +167,7 @@ class RunService
                     $rawOutput = $driver->execute(
                         $workflow['project_path'],
                         $systemPrompt,
-                        $context,
+                        $this->buildAgentContext($context, $agent),
                         $timeout
                     );
                     $decoded = $this->validateJsonOutput($agentId, $rawOutput);
@@ -277,6 +277,26 @@ class RunService
         }
 
         return $decoded;
+    }
+
+    private function buildAgentContext(string $context, array $agent): string
+    {
+        $steps = $agent['steps'] ?? [];
+
+        $result = $context;
+
+        if (! empty($steps)) {
+            $result .= "\n\n---\n## Task\n";
+            foreach ($steps as $step) {
+                $result .= "- {$step}\n";
+            }
+        }
+
+        $result .= "\n\n---\n## Required output format\n"
+            . "Respond with ONLY this JSON object — no markdown, no code block, no extra text:\n"
+            . '{"step": "<brief description of what you did>", "status": "done", "output": "<your full response>", "next_action": null, "errors": []}';
+
+        return $result;
     }
 
     private function resolveSystemPrompt(array $agent): string

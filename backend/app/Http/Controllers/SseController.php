@@ -23,6 +23,7 @@ class SseController extends Controller
         }
 
         return new StreamedResponse(function () use ($id, $config) {
+            set_time_limit(0);
             $this->sseStreamService->setHeaders();
 
             // Détection retry : pull() consomme atomiquement le checkpoint (get + forget).
