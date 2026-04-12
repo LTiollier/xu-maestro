@@ -1,8 +1,8 @@
 name: "Example Workflow"
-project_path: "/tmp/example"
+project_path: "/Users/leoelmy/Projects/xu-workflow/helloWorld"
 agents:
   - id: agent-one
-    engine: claude-code
+    engine: gemini-cli
     timeout: 60
     mandatory: true      # relancé automatiquement en cas d'échec (jusqu'à max_retries fois)
     max_retries: 2       # 2 retries → 3 tentatives au total (défaut : 0 si absent)
