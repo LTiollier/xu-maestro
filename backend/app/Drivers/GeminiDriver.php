@@ -9,7 +9,7 @@ class GeminiDriver implements DriverInterface
 {
     public function execute(string $projectPath, string $systemPrompt, string $context, int $timeout): string
     {
-        $command = 'gemini -p --yolo';
+        $command = 'gemini -p --yolo --output-format json';
 
         if ($systemPrompt !== '') {
             $command .= ' --append-system-prompt ' . escapeshellarg($systemPrompt);

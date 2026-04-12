@@ -88,6 +88,9 @@ class YamlService
             if (! isset($agent['engine']) || ! is_string($agent['engine']) || $agent['engine'] === '') {
                 return false;
             }
+            if (! in_array($agent['engine'], ['claude-code', 'gemini-cli'], true)) {
+                return false;
+            }
         }
 
         return true;

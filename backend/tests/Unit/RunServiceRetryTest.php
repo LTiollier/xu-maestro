@@ -3,6 +3,7 @@
 namespace Tests\Unit;
 
 use App\Drivers\DriverInterface;
+use App\Drivers\DriverResolver;
 use App\Events\AgentBubble;
 use App\Events\AgentStatusChanged;
 use App\Events\RunCompleted;
@@ -25,6 +26,7 @@ use Tests\TestCase;
 class RunServiceRetryTest extends TestCase
 {
     private DriverInterface $mockDriver;
+    private DriverResolver $mockResolver;
     private YamlService $mockYaml;
     private ArtifactService $mockArtifact;
     private CheckpointService $mockCheckpoint;
@@ -37,6 +39,8 @@ class RunServiceRetryTest extends TestCase
         Event::fake();
 
         $this->mockDriver     = $this->createMock(DriverInterface::class);
+        $this->mockResolver   = $this->createMock(DriverResolver::class);
+        $this->mockResolver->method('for')->willReturn($this->mockDriver);
         $this->mockYaml       = $this->createMock(YamlService::class);
         $this->mockArtifact   = $this->createMock(ArtifactService::class);
         $this->mockCheckpoint = $this->createMock(CheckpointService::class);
@@ -45,7 +49,7 @@ class RunServiceRetryTest extends TestCase
         $this->mockArtifact->method('getContextContent')->willReturn('# context');
 
         $this->service = new RunService(
-            $this->mockDriver, $this->mockYaml, $this->mockArtifact, $this->mockCheckpoint
+            $this->mockResolver, $this->mockYaml, $this->mockArtifact, $this->mockCheckpoint
         );
     }
 

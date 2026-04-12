@@ -2,7 +2,7 @@
 
 namespace App\Services;
 
-use App\Drivers\DriverInterface;
+use App\Drivers\DriverResolver;
 use App\Events\AgentBubble;
 use App\Events\AgentStatusChanged;
 use App\Events\RunCompleted;
@@ -16,7 +16,7 @@ use Illuminate\Process\Exceptions\ProcessTimedOutException;
 class RunService
 {
     public function __construct(
-        private readonly DriverInterface $driver,
+        private readonly DriverResolver $driverResolver,
         private readonly YamlService $yamlService,
         private readonly ArtifactService $artifactService,
         private readonly CheckpointService $checkpointService,
@@ -121,6 +121,8 @@ class RunService
                 throw new RunCancelledException($runId);
             }
 
+            $driver = $this->driverResolver->for($agent['engine']);
+
             // Patch A5 rétro Épic 2 : éviter (int) config(..., 120) qui caste null en 0
             $timeout = isset($agent['timeout']) && is_int($agent['timeout']) && $agent['timeout'] > 0
                 ? $agent['timeout']
@@ -162,7 +164,7 @@ class RunService
                 }
 
                 try {
-                    $rawOutput = $this->driver->execute(
+                    $rawOutput = $driver->execute(
                         $workflow['project_path'],
                         $systemPrompt,
                         $context,

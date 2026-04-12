@@ -3,6 +3,7 @@
 namespace Tests\Unit;
 
 use App\Drivers\DriverInterface;
+use App\Drivers\DriverResolver;
 use App\Events\AgentBubble;
 use App\Events\AgentStatusChanged;
 use App\Events\RunCompleted;
@@ -20,6 +21,7 @@ use Tests\TestCase;
 class RunServiceRetryFromCheckpointTest extends TestCase
 {
     private DriverInterface $mockDriver;
+    private DriverResolver $mockResolver;
     private YamlService $mockYaml;
     private ArtifactService $mockArtifact;
     private CheckpointService $mockCheckpoint;
@@ -32,6 +34,8 @@ class RunServiceRetryFromCheckpointTest extends TestCase
         Event::fake();
 
         $this->mockDriver     = $this->createMock(DriverInterface::class);
+        $this->mockResolver   = $this->createMock(DriverResolver::class);
+        $this->mockResolver->method('for')->willReturn($this->mockDriver);
         $this->mockYaml       = $this->createMock(YamlService::class);
         $this->mockArtifact   = $this->createMock(ArtifactService::class);
         $this->mockCheckpoint = $this->createMock(CheckpointService::class);
@@ -39,7 +43,7 @@ class RunServiceRetryFromCheckpointTest extends TestCase
         $this->mockArtifact->method('getContextContent')->willReturn('# context');
 
         $this->service = new RunService(
-            $this->mockDriver, $this->mockYaml, $this->mockArtifact, $this->mockCheckpoint
+            $this->mockResolver, $this->mockYaml, $this->mockArtifact, $this->mockCheckpoint
         );
     }
 
@@ -242,6 +246,33 @@ class RunServiceRetryFromCheckpointTest extends TestCase
         $this->expectException(RunCancelledException::class);
 
         $this->service->executeFromCheckpoint($runId, $this->checkpointAtStep0());
+    }
+
+    #[Test]
+    public function it_uses_gemini_driver_when_agent_engine_is_gemini_cli(): void
+    {
+        $runId = 'run-gemini-retry';
+        $this->setupRunPath($runId);
+
+        $workflow = [
+            'name' => 'Test', 'project_path' => '/tmp/test', 'file' => 'test.yaml',
+            'agents' => [
+                ['id' => 'agent-one', 'engine' => 'claude-code'],
+                ['id' => 'agent-two', 'engine' => 'gemini-cli'],
+            ],
+        ];
+        $this->mockYaml->method('load')->willReturn($workflow);
+        $this->mockDriver->method('execute')->willReturn($this->validOutput());
+
+        // Le resolver doit être appelé avec 'gemini-cli' pour l'agent fautif (startStep=1)
+        $this->mockResolver->expects($this->once())
+            ->method('for')
+            ->with('gemini-cli')
+            ->willReturn($this->mockDriver);
+
+        $this->service->executeFromCheckpoint($runId, $this->checkpointAtStep1());
+
+        Event::assertDispatched(RunCompleted::class);
     }
 
     #[Test]

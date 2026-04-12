@@ -3,6 +3,7 @@
 namespace Tests\Unit;
 
 use App\Drivers\DriverInterface;
+use App\Drivers\DriverResolver;
 use App\Events\AgentBubble;
 use App\Events\AgentStatusChanged;
 use App\Events\RunCompleted;
@@ -18,6 +19,7 @@ use Tests\TestCase;
 class RunServiceTest extends TestCase
 {
     private DriverInterface $mockDriver;
+    private DriverResolver $mockResolver;
     private YamlService $mockYaml;
     private ArtifactService $mockArtifact;
     private CheckpointService $mockCheckpoint;
@@ -30,6 +32,8 @@ class RunServiceTest extends TestCase
         Event::fake();
 
         $this->mockDriver     = $this->createMock(DriverInterface::class);
+        $this->mockResolver   = $this->createMock(DriverResolver::class);
+        $this->mockResolver->method('for')->willReturn($this->mockDriver);
         $this->mockYaml       = $this->createMock(YamlService::class);
         $this->mockArtifact   = $this->createMock(ArtifactService::class);
         $this->mockCheckpoint = $this->createMock(CheckpointService::class);
@@ -37,7 +41,7 @@ class RunServiceTest extends TestCase
         $this->mockArtifact->method('initializeRun')->willReturn('/tmp/test-run');
         $this->mockArtifact->method('getContextContent')->willReturn('# context from session.md');
 
-        $this->service = new RunService($this->mockDriver, $this->mockYaml, $this->mockArtifact, $this->mockCheckpoint);
+        $this->service = new RunService($this->mockResolver, $this->mockYaml, $this->mockArtifact, $this->mockCheckpoint);
     }
 
     private function validOutput(string $step = 'analyse', string $status = 'done'): string
@@ -182,7 +186,9 @@ class RunServiceTest extends TestCase
             );
 
         $mockCheckpoint = $this->createMock(CheckpointService::class);
-        $service        = new RunService($driver, $yaml, $mockArtifact, $mockCheckpoint);
+        $resolver       = $this->createMock(DriverResolver::class);
+        $resolver->method('for')->willReturn($driver);
+        $service        = new RunService($resolver, $yaml, $mockArtifact, $mockCheckpoint);
         $service->execute('test-run-id', 'multi.yaml', 'brief');
 
         $this->assertSame('# initial session content', $calls[0]);

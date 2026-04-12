@@ -2,8 +2,6 @@
 
 namespace App\Providers;
 
-use App\Drivers\ClaudeDriver;
-use App\Drivers\DriverInterface;
 use App\Events\AgentBubble;
 use App\Events\AgentStatusChanged;
 use App\Events\RunCompleted;
@@ -17,7 +15,6 @@ class AppServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
-        $this->app->bind(DriverInterface::class, ClaudeDriver::class);
     }
 
     public function boot(): void
