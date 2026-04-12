@@ -144,6 +144,10 @@
 - **`checkpoint['runId']` non validé contre l'URL `$id`** — Le checkpoint lu depuis le disque contient un `runId` non comparé à l'URL `$id`. En pratique impossible (checkpoint toujours écrit avec le bon runId), mais pas de validation défensive. [RunController.php]
 - **`retry_checkpoint` reste 3600s si le client ne reconnecte jamais** — Après POST `/retry-step`, si l'utilisateur ferme le navigateur, le checkpoint reste en cache 1h. Toute reconnexion ultérieure déclencherait un retry automatique non sollicité. Compromis TTL acceptable pour MVP. [RunController.php, SseController.php]
 
+## Deferred from: code review of fix-ob-flush-workflow-launch (2026-04-12)
+
+- **Proxies non-standard ignorant `X-Accel-Buffering: no`** — HAProxy, AWS ALB et équivalents ne reconnaissent pas ce header nginx-spécifique. Sans buffer utilisateur actif côté PHP, `flush()` seul envoie au worker PHP, mais le proxy peut encore bufferiser. Non causé par ce fix (pré-existant). À traiter si le projet est déployé derrière un tel proxy : ajouter `Transfer-Encoding: chunked` ou un `ob_start()` + flush explicite côté `SseController`. [SseController.php]
+
 ## Deferred from: code review of 4-2-selection-engine-par-agent (2026-04-12)
 
 - **`InvalidArgumentException` de `DriverResolver::for()` non catchée dans `executeAgents()`** — Si un engine invalide atteint le resolver (ex : appel direct sans validation préalable, ou YAML modifié entre validation et exécution), l'exception bubble sans poser `error_emitted`, sans appeler `finalizeRun()`, et sans écrire de checkpoint. SseController le catchera via son fallback `\Throwable` et émettra un `RunError(agentId: 'unknown')`. Acceptable pour MVP (validation YamlService prévient le cas normal). [DriverResolver.php, RunService.php]

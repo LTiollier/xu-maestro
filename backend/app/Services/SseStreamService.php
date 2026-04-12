@@ -15,7 +15,6 @@ class SseStreamService
     public function sendKeepAlive(): void
     {
         echo ": ping\n\n";
-        ob_flush();
         flush();
     }
 }

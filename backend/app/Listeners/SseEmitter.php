@@ -22,7 +22,6 @@ class SseEmitter
 
         echo "event: agent.status.changed\n";
         echo "data: {$payload}\n\n";
-        ob_flush();
         flush();
     }
 
@@ -38,7 +37,6 @@ class SseEmitter
 
         echo "event: agent.bubble\n";
         echo "data: {$payload}\n\n";
-        ob_flush();
         flush();
     }
 
@@ -56,7 +54,6 @@ class SseEmitter
         echo "retry: 30000\n";
         echo "event: run.completed\n";
         echo "data: {$payload}\n\n";
-        ob_flush();
         flush();
     }
 
@@ -74,7 +71,6 @@ class SseEmitter
         echo "retry: 30000\n";
         echo "event: run.error\n";
         echo "data: {$payload}\n\n";
-        ob_flush();
         flush();
     }
 }
