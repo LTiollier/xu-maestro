@@ -1,0 +1,16 @@
+name: "Sub workflow dev"
+project_path: "/Users/leoelmy/Projects/xu-workflow/helloWorld"
+agents:
+  - id: traducteur
+    engine: gemini-cli
+    timeout: 600
+    mandatory: true      # relancé automatiquement en cas d'échec (jusqu'à max_retries fois)
+    max_retries: 2       # 2 retries → 3 tentatives au total (défaut : 0 si absent)
+    steps:
+      - "Étape 1 — Traducteur"
+    system_prompt: "Tu es un traducteur, réécrit la demande en anglais."
+
+  - id: simple-workflow
+    engine: sub-workflow
+    workflow_file: simple-workflow.yaml
+    mandatory: true
