@@ -38,6 +38,7 @@ Chaque agent dans la liste `agents` accepte les paramètres suivants :
 - `mandatory` (bool, défaut: false) : Si `true`, l'agent sera relancé automatiquement en cas d'échec (erreur CLI ou timeout).
 - `max_retries` (int, défaut: 0) : Nombre de tentatives supplémentaires en cas d'échec (actif uniquement si `mandatory: true`).
 - `skippable` (bool, défaut: false) : Permet à l'agent précédent de sauter cet agent via l'instruction `next_action: "skip_next"` dans sa réponse JSON.
+- `interactive` (bool, défaut: false) : Active la possibilité pour l'agent de poser une question à l'utilisateur. Injecte automatiquement l'instruction `waiting_for_input` dans le prompt de l'agent.
 
 #### Configuration du Prompt et des Instructions
 - `system_prompt` (string) : Instructions directes définissant le rôle de l'agent (ex: "Tu es un expert en Python").
@@ -76,6 +77,24 @@ Bien que cela concerne l'implémentation de l'agent lui-même, le système impos
   "errors": []
 }
 ```
+
+#### Statut spécial : Interaction Utilisateur (`waiting_for_input`)
+Un agent peut interrompre l'exécution pour poser une question à l'utilisateur. L'exécution reprend automatiquement une fois la réponse soumise.
+
+```json
+{
+  "step": "Question posée à l'utilisateur",
+  "status": "waiting_for_input",
+  "question": "Quel est le nom du client final ?",
+  "output": "",
+  "next_action": null,
+  "errors": []
+}
+```
+
+- **`question`** (string, requis si `status: waiting_for_input`) : La question affichée à l'utilisateur dans l'interface.
+- L'agent affiche un badge violet avec une zone de saisie sous sa carte. La réponse est injectée dans le contexte partagé pour les agents suivants.
+- **Timeout :** Si l'utilisateur ne répond pas dans les **15 minutes**, le run passe en erreur (relançable depuis le checkpoint).
 
 ---
 
