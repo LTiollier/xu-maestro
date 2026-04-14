@@ -1,0 +1,39 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    ports:
+      - "8000:8000"
+    volumes:
+      # Data directories (created automatically if missing)
+      - ./workflows:/workflows
+      - ./runs:/runs
+      - ./prompts:/prompts
+      # Persistent SQLite database
+      - backend_db:/app/database
+      # Mount your home directory at the same absolute path so that:
+      #   - any workflow project_path (e.g. /Users/you/Projects/foo) is accessible
+      #   - CLI auth configs (~/.gemini, ~/.claude, ~/.config) work out of the box
+      - ${HOME}:${HOME}
+    environment:
+      PHP_CLI_SERVER_WORKERS: 4
+      # Set container HOME = host HOME so CLI tools find their config files
+      HOME: ${HOME}
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+    ports:
+      - "3000:3000"
+    environment:
+      # Server-side: Next.js proxies /api/* to the backend service
+      BACKEND_URL: http://backend:8000
+      # Client-side: browser hits the exposed host port directly
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  backend_db:
