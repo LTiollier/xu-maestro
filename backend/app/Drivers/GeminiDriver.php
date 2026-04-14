@@ -7,7 +7,7 @@ use Illuminate\Support\Facades\Process;
 
 class GeminiDriver implements DriverInterface
 {
-    public function execute(string $projectPath, string $systemPrompt, string $context, int $timeout): string
+    public function execute(string $projectPath, string $systemPrompt, string $context, int $timeout, ?callable $onOutput = null): string
     {
         $command = 'gemini --prompt "" --yolo';
 

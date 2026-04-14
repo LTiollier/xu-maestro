@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Drivers\DriverResolver;
 use App\Events\AgentBubble;
+use App\Events\AgentLogLine;
 use App\Events\AgentStatusChanged;
 use App\Events\AgentWaitingForInput;
 use App\Events\RunCompleted;
@@ -196,11 +197,16 @@ class RunService
                     }
 
                     try {
+                        $logCallback = function (string $line) use ($runId, $agentId, $stepIndex): void {
+                            event(new AgentLogLine($runId, $agentId, $line, $stepIndex));
+                        };
+
                         $rawOutput = $driver->execute(
                             $workflow['project_path'],
                             $systemPrompt,
                             $this->buildAgentContext($context . $additionalContext, $agent, $nextIsSkippable),
-                            $timeout
+                            $timeout,
+                            $logCallback
                         );
                         $decoded = $this->validateJsonOutput($agentId, $rawOutput);
                         break; // succès — sortir de la boucle retry

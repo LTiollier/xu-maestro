@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Events\AgentBubble;
+use App\Events\AgentLogLine;
 use App\Events\AgentStatusChanged;
 use App\Events\AgentWaitingForInput;
 use App\Events\RunCompleted;
@@ -22,6 +23,7 @@ class AppServiceProvider extends ServiceProvider
     {
         JsonResource::withoutWrapping();
 
+        Event::listen(AgentLogLine::class, [SseEmitter::class, 'handleAgentLogLine']);
         Event::listen(AgentStatusChanged::class, [SseEmitter::class, 'handleAgentStatusChanged']);
         Event::listen(AgentBubble::class, [SseEmitter::class, 'handleAgentBubble']);
         Event::listen(RunCompleted::class, [SseEmitter::class, 'handleRunCompleted']);

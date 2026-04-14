@@ -3,6 +3,7 @@
 namespace App\Listeners;
 
 use App\Events\AgentBubble;
+use App\Events\AgentLogLine;
 use App\Events\AgentStatusChanged;
 use App\Events\AgentWaitingForInput;
 use App\Events\RunCompleted;
@@ -22,6 +23,21 @@ class SseEmitter
         ], JSON_THROW_ON_ERROR);
 
         echo "event: agent.status.changed\n";
+        echo "data: {$payload}\n\n";
+        flush();
+    }
+
+    public function handleAgentLogLine(AgentLogLine $event): void
+    {
+        $payload = json_encode([
+            'runId'     => $event->runId,
+            'agentId'   => $event->agentId,
+            'line'      => $event->line,
+            'step'      => $event->step,
+            'timestamp' => now()->toIso8601String(),
+        ], JSON_THROW_ON_ERROR);
+
+        echo "event: agent.log_line\n";
         echo "data: {$payload}\n\n";
         flush();
     }

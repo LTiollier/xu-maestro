@@ -1,5 +1,10 @@
 # Deferred Work
 
+## Deferred from: agent-streaming-live-logs review (2026-04-14)
+
+- **SseEmitter echo/flush sans guard SSE actif** — `handleAgentLogLine` (et les autres handlers) utilisent `echo`/`flush()` directement. Si l'architecture évolue vers un worker en queue, ces appels écriraient sur stdout du worker. À protéger via un contexte SSE explicite si le modèle d'exécution change.
+- **Sub-workflow agents sans live log** — `executeSubWorkflowNode` dans `RunService` appelle `driver->execute()` sans passer de `$logCallback`. Les agents dans les sous-workflows n'émettent pas de `agent.log_line`. À corriger si les sous-workflows sont utilisés intensivement.
+
 ## Deferred from: agent-user-interaction review (2026-04-14)
 
 - **État agent perdu au refresh** — `agentStatusStore` est en mémoire ; après refresh, la question `waiting_for_input` disparaît et l'utilisateur ne peut plus répondre (run bloqué jusqu'au timeout). À corriger via persistance sessionStorage ou replay SSE côté backend.
