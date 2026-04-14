@@ -11,3 +11,6 @@ down:
 
 reset:
 	make down && make build && make up
+
+clean:
+	rm -rf /Users/leoelmy/Projects/test-workflow && mkdir /Users/leoelmy/Projects/test-workflow
