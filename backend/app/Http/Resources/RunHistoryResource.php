@@ -9,13 +9,15 @@ class RunHistoryResource extends JsonResource
     public function toArray($request): array
     {
         return [
-            'runId'        => $this->resource['runId'],
-            'workflowFile' => $this->resource['workflowFile'],
-            'status'       => $this->resource['status'],
-            'duration'     => $this->resource['duration'],
-            'agentCount'   => $this->resource['agentCount'],
-            'runFolder'    => $this->resource['runFolder'],
-            'createdAt'    => $this->resource['createdAt'],
+            'runId'           => $this->resource['runId'],
+            'workflowFile'    => $this->resource['workflowFile'],
+            'status'          => $this->resource['status'],
+            'duration'        => $this->resource['duration'],
+            'agentCount'      => $this->resource['agentCount'],
+            'runFolder'       => $this->resource['runFolder'],
+            'createdAt'       => $this->resource['createdAt'],
+            'completedAgents' => $this->resource['completedAgents'] ?? [],
+            'currentAgent'    => $this->resource['currentAgent'] ?? null,
         ];
     }
 }

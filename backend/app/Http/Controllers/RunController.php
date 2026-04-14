@@ -62,13 +62,15 @@ class RunController extends Controller
             }
 
             $runs[] = [
-                'runId'        => $runId,
-                'workflowFile' => $checkpoint['workflowFile'] ?? '',
-                'status'       => $status,
-                'duration'     => $result['duration'] ?? null,
-                'agentCount'   => $result['agentCount'] ?? 0,
-                'runFolder'    => $dir,
-                'createdAt'    => $createdAt,
+                'runId'           => $runId,
+                'workflowFile'    => $checkpoint['workflowFile'] ?? '',
+                'status'          => $status,
+                'duration'        => $result['duration'] ?? null,
+                'agentCount'      => $result['agentCount'] ?? 0,
+                'runFolder'       => $dir,
+                'createdAt'       => $createdAt,
+                'completedAgents' => $checkpoint['completedAgents'] ?? [],
+                'currentAgent'    => $checkpoint['currentAgent'] ?? null,
             ];
         }
 
@@ -195,6 +197,28 @@ class RunController extends Controller
     {
         try {
             $runPath = cache()->get("run:{$id}:path");
+
+            if (! $runPath) {
+                // Fallback : scan filesystem pour les runs historiques (non en cache)
+                $runsPath = config('xu-workflow.runs_path');
+                if (File::exists($runsPath)) {
+                    foreach (File::directories($runsPath) as $dir) {
+                        $checkpointPath = $dir . '/checkpoint.json';
+                        if (! File::exists($checkpointPath)) {
+                            continue;
+                        }
+                        try {
+                            $checkpoint = json_decode(File::get($checkpointPath), true, 512, JSON_THROW_ON_ERROR);
+                            if (($checkpoint['runId'] ?? null) === $id) {
+                                $runPath = $dir;
+                                break;
+                            }
+                        } catch (\Throwable) {
+                            continue;
+                        }
+                    }
+                }
+            }
 
             if (! $runPath) {
                 return response()->json(['content' => '']);
