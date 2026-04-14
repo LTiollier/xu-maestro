@@ -30,6 +30,7 @@ class SseController extends Controller
             // Si présent, le run reprend depuis le checkpoint sans passer par la garde done.
             $retryCheckpoint = cache()->pull("run:{$id}:retry_checkpoint");
             if ($retryCheckpoint) {
+                cache()->forget("run:{$id}:event_log");
                 try {
                     $this->runService->executeFromCheckpoint($id, $retryCheckpoint);
                 } catch (\Throwable $e) {
@@ -49,7 +50,28 @@ class SseController extends Controller
                 return;
             }
 
-            if (cache()->has("run:{$id}") || cache()->has("run:{$id}:done")) {
+            // Reconnexion — run encore actif : rejouer les événements passés et indiquer de retenter
+            if (cache()->has("run:{$id}")) {
+                $log = cache()->get("run:{$id}:event_log", []);
+                foreach ($log as $entry) {
+                    echo "event: {$entry['type']}\n";
+                    echo "data: " . json_encode($entry['payload'], JSON_THROW_ON_ERROR) . "\n\n";
+                    flush();
+                }
+                echo "retry: 3000\n\n";
+                flush();
+                return;
+            }
+
+            // Reconnexion — run terminé : rejouer l'intégralité du log
+            // Le frontend fermera l'EventSource sur run.completed/run.error
+            if (cache()->has("run:{$id}:done")) {
+                $log = cache()->get("run:{$id}:event_log", []);
+                foreach ($log as $entry) {
+                    echo "event: {$entry['type']}\n";
+                    echo "data: " . json_encode($entry['payload'], JSON_THROW_ON_ERROR) . "\n\n";
+                    flush();
+                }
                 return;
             }
 

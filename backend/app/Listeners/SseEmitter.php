@@ -13,17 +13,19 @@ class SseEmitter
 {
     public function handleAgentStatusChanged(AgentStatusChanged $event): void
     {
-        $payload = json_encode([
+        $payload = [
             'runId'     => $event->runId,
             'agentId'   => $event->agentId,
             'status'    => $event->status,
             'step'      => $event->step,
             'message'   => $event->message,
             'timestamp' => now()->toIso8601String(),
-        ], JSON_THROW_ON_ERROR);
+        ];
+
+        $this->appendEventToLog($event->runId, 'agent.status.changed', $payload);
 
         echo "event: agent.status.changed\n";
-        echo "data: {$payload}\n\n";
+        echo "data: " . json_encode($payload, JSON_THROW_ON_ERROR) . "\n\n";
         flush();
     }
 
@@ -44,65 +46,81 @@ class SseEmitter
 
     public function handleAgentBubble(AgentBubble $event): void
     {
-        $payload = json_encode([
+        $payload = [
             'runId'     => $event->runId,
             'agentId'   => $event->agentId,
             'message'   => $event->message,
             'step'      => $event->step,
             'timestamp' => now()->toIso8601String(),
-        ], JSON_THROW_ON_ERROR);
+        ];
+
+        $this->appendEventToLog($event->runId, 'agent.bubble', $payload);
 
         echo "event: agent.bubble\n";
-        echo "data: {$payload}\n\n";
+        echo "data: " . json_encode($payload, JSON_THROW_ON_ERROR) . "\n\n";
         flush();
     }
 
     public function handleAgentWaitingForInput(AgentWaitingForInput $event): void
     {
-        $payload = json_encode([
+        $payload = [
             'runId'     => $event->runId,
             'agentId'   => $event->agentId,
             'question'  => $event->question,
             'step'      => $event->step,
             'timestamp' => now()->toIso8601String(),
-        ], JSON_THROW_ON_ERROR);
+        ];
+
+        $this->appendEventToLog($event->runId, 'agent.waiting_for_input', $payload);
 
         echo "event: agent.waiting_for_input\n";
-        echo "data: {$payload}\n\n";
+        echo "data: " . json_encode($payload, JSON_THROW_ON_ERROR) . "\n\n";
         flush();
     }
 
     public function handleRunCompleted(RunCompleted $event): void
     {
-        $payload = json_encode([
+        $payload = [
             'runId'      => $event->runId,
             'duration'   => $event->duration,
             'agentCount' => $event->agentCount,
             'status'     => $event->status,
             'runFolder'  => $event->runFolder,
             'timestamp'  => now()->toIso8601String(),
-        ], JSON_THROW_ON_ERROR);
+        ];
+
+        $this->appendEventToLog($event->runId, 'run.completed', $payload);
 
         echo "retry: 30000\n";
         echo "event: run.completed\n";
-        echo "data: {$payload}\n\n";
+        echo "data: " . json_encode($payload, JSON_THROW_ON_ERROR) . "\n\n";
         flush();
     }
 
     public function handleRunError(RunError $event): void
     {
-        $payload = json_encode([
+        $payload = [
             'runId'          => $event->runId,
             'agentId'        => $event->agentId,
             'step'           => $event->step,
             'message'        => $event->message,
             'checkpointPath' => $event->checkpointPath,
             'timestamp'      => now()->toIso8601String(),
-        ], JSON_THROW_ON_ERROR);
+        ];
+
+        $this->appendEventToLog($event->runId, 'run.error', $payload);
 
         echo "retry: 30000\n";
         echo "event: run.error\n";
-        echo "data: {$payload}\n\n";
+        echo "data: " . json_encode($payload, JSON_THROW_ON_ERROR) . "\n\n";
         flush();
+    }
+
+    private function appendEventToLog(string $runId, string $type, array $payload): void
+    {
+        $key = "run:{$runId}:event_log";
+        $log = cache()->get($key, []);
+        $log[] = ['type' => $type, 'payload' => $payload];
+        cache()->put($key, $log, 7200);
     }
 }

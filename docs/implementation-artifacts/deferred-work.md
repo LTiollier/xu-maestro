@@ -1,5 +1,11 @@
 # Deferred Work
 
+## Deferred from: code review of fix-sse-reconnect-replay (2026-04-14)
+
+- **Window race : `done` posé avant que `RunError` soit appendé au log** — Dans `RunService::execute`, le `finally` pose `run:{id}:done` puis l'exception remonte vers `SseController` qui émet `RunError` (via `SseEmitter::handleRunError`). Si un client reconnecte entre le `cache()->put("run:{id}:done")` et l'appel `event(new RunError(...))`, le replay branch "run terminé" se déclenche avec un log sans event terminal. L'EventSource reste ouvert indéfiniment. Fenêtre sub-milliseconde, très improbable en pratique. Corriger en posant `done` APRÈS le retour de la catch `SseController`, ou en loggant le RunError côté RunService avant de rethrow.
+- **Double "Reprise depuis le checkpoint..." sur reconnect pendant retry** — `executeFromCheckpoint` émet `AgentStatusChanged(working)` + `AgentBubble("Reprise depuis le checkpoint...")` avant de démarrer la boucle. Ces events sont appendés au nouveau log. Sur une reconnexion pendant un retry, le client recevra ces events une deuxième fois, affichant la bulle "Reprise" à nouveau dans RunSidebar. Impact visuel mineur. Corriger via un flag ou en émettant ces events avant de les logger.
+- **Thinning du log sur reconnexion active** — Pour un run actif, chaque reconnexion rejoue l'intégralité des events passés depuis le début du run. Pour des workflows très longs (20+ agents), ce log peut atteindre ~100 events. À optimiser si la performance de replay devient perceptible (e.g., via `Last-Event-ID` ou en ne rejouant que le dernier status par agent).
+
 ## Deferred from: agent-streaming-live-logs review (2026-04-14)
 
 - **SseEmitter echo/flush sans guard SSE actif** — `handleAgentLogLine` (et les autres handlers) utilisent `echo`/`flush()` directement. Si l'architecture évolue vers un worker en queue, ces appels écriraient sur stdout du worker. À protéger via un contexte SSE explicite si le modèle d'exécution change.
