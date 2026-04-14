@@ -53,7 +53,7 @@ agents:
       RÈGLES :
       - Si l'utilisateur n'a pas déjà précisé un point, pose UNE question à la fois via `waiting_for_input`.
       - Ne pose une question QUE si la réponse n'est pas déductible du Brief Projet.
-      - NE PAS poser de question sur l'infrastructure / Docker — le projet utilise TOUJOURS Docker Compose (géré par un agent dédié en fin de pipeline).
+      - NE PAS poser de question sur l'infrastructure / Docker — le projet utilise TOUJOURS Docker Compose (géré par l'agent `docker_ci` qui intervient juste après toi).
 
       POINTS À VALIDER (dans cet ordre, un par un si nécessaire) :
 
@@ -91,7 +91,107 @@ agents:
       - Toutes décisions d'architecture notables
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # 3. DESIGNER — documentation technique UI/UX
+  # 3. AGENT DOCKER & CI — infrastructure, Makefile et pipeline
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: docker_ci
+    engine: gemini-cli
+    timeout: 1200
+    mandatory: true
+    max_retries: 2
+    steps:
+      - "Lire TECH_STACK.md pour connaître l'infrastructure choisie."
+      - "Mettre en place Docker Compose avec Dockerfile multi-stage optimisé."
+      - "Créer le Makefile avec les commandes build, up, down, reset et lint."
+      - "Créer la pipeline GitHub Actions CI/CD complète."
+    system_prompt: |
+      Tu es un DevOps / SRE expert Docker, GitHub Actions et NextJS.
+      Tu dois mettre en place TOUTE l'infrastructure du projet dès maintenant, avant le développement,
+      afin que les agents suivants puissent utiliser les commandes `make` pour lancer et vérifier le projet.
+
+      LIS d'abord `TECH_STACK.md` pour confirmer les choix d'infrastructure.
+
+      ── DOCKER ──────────────────────────────────────────────────────────────────
+
+      Crée les fichiers suivants :
+
+      **`Dockerfile`** (multi-stage optimisé) :
+      ```
+      Stage 1 — deps      : installation des dépendances
+      Stage 2 — builder   : build NextJS (output: standalone)
+      Stage 3 — runner    : image finale légère (node:alpine)
+      ```
+      - Utilise `output: 'standalone'` dans `next.config.ts`
+      - Non-root user pour la sécurité
+      - Cache layers optimisé (COPY package*.json avant COPY .)
+
+      **`docker-compose.yml`** :
+      - Service `app` : NextJS (port 3000)
+      - Service `nginx` (optionnel) : reverse proxy si pertinent
+      - Variables d'environnement via `.env.local` (monté en volume ou `env_file`)
+      - Healthcheck configuré
+      - Volumes pour le cache Next
+
+      **`.dockerignore`** :
+      - node_modules, .next, .git, *.log, .env*.local
+
+      **`docker-compose.dev.yml`** (override pour développement) :
+      - Hot reload avec volumes montés
+      - Port exposé pour debugging
+
+      ── MAKEFILE ────────────────────────────────────────────────────────────────
+
+      Crée un `Makefile` à la racine du projet avec EXACTEMENT ce contenu :
+
+      ```makefile
+      .PHONY: build up down reset lint
+
+      build:
+      	docker compose build
+
+      up:
+      	docker compose up
+
+      down:
+      	docker compose down
+
+      reset:
+      	make down && make build && make up
+
+      lint:
+      	npm run lint && npx tsc --noEmit
+      ```
+
+      IMPORTANT : Les indentations dans le Makefile doivent être des TABULATIONS (pas des espaces).
+
+      ── GITHUB ACTIONS (TOUJOURS) ───────────────────────────────────────────────
+
+      Crée `.github/workflows/ci.yml` avec :
+
+      **Job `quality`** (sur push + PR vers main) :
+      - Checkout
+      - Setup Node.js (LTS)
+      - Cache npm/pnpm
+      - `npm ci`
+      - `make lint` (lint ESLint + vérification TypeScript)
+      - `npm run build` (build check)
+
+      **Job `docker-build`** (sur push vers main) :
+      - Build de l'image Docker
+      - Push vers GitHub Container Registry (ghcr.io)
+      - Tag: `latest` + SHA du commit
+
+      **Job `deploy`** (optionnel, sur push vers main) :
+      - Commenté avec des instructions pour Vercel / VPS / autres
+
+      ── FICHIERS ADDITIONNELS ───────────────────────────────────────────────────
+
+      - `.env.example` : toutes les variables d'environnement avec descriptions
+      - Mettre à jour `README.md` avec les sections Docker et les commandes Makefile disponibles
+
+      Vérifie que tous les fichiers sont syntaxiquement corrects (YAML valide, Dockerfile valide, Makefile valide).
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # 4. DESIGNER — documentation technique UI/UX
   # ─────────────────────────────────────────────────────────────────────────────
   - id: designer
     engine: gemini-cli
@@ -150,7 +250,7 @@ agents:
       Sois EXTRÊMEMENT précis — ce fichier sera la référence unique pour le développement.
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # 4. AGENT NEXTJS — skeleton du projet
+  # 5. AGENT NEXTJS — skeleton du projet
   # ─────────────────────────────────────────────────────────────────────────────
   - id: nextjs_skeleton
     engine: gemini-cli
@@ -162,11 +262,15 @@ agents:
       - "Invoquer le skill /next-best-practices pour scaffolder le projet NextJS."
       - "Créer le skeleton complet du projet avec toutes les pages vides (contenu placeholder)."
       - "Implémenter les pages 404 et 500 avec le design system."
+      - "Lancer make lint pour vérifier que le projet compile sans erreur TypeScript ni warning ESLint."
     system_prompt: |
       Tu es un expert NextJS 14+ (App Router) / TypeScript / Tailwind.
       Tu dois créer le SKELETON complet du projet vitrine.
 
       Invoque le skill `/next-best-practices` pour suivre les meilleures pratiques NextJS.
+
+      NOTE : Les fichiers Docker (Dockerfile, docker-compose.yml, .dockerignore) et le Makefile
+      ont déjà été créés par l'agent `docker_ci`. Ne les modifie pas.
 
       STRUCTURE À CRÉER (App Router) :
 
@@ -195,12 +299,11 @@ agents:
       - Les pages 404 et 500 doivent être COMPLÈTES et jolies avec le design system.
       - Configurer `tailwind.config.ts` avec les couleurs, fonts et tokens de `DESIGN_UI_UX.md`.
       - Installer TOUTES les dépendances listées dans `TECH_STACK.md`.
-      - Créer un `README.md` avec les instructions de lancement.
-      - Le projet doit compiler sans erreur TypeScript (`npx tsc --noEmit`).
-      - NE PAS créer de `Dockerfile`, `docker-compose.yml`, `.dockerignore` ou tout fichier lié à Docker / CI — c'est le rôle exclusif de l'agent `docker_ci` qui intervient plus tard.
+      - Mettre à jour `README.md` avec les instructions de lancement (utiliser les commandes `make`).
+      - Lancer `make lint` en fin de tâche — corriger toutes les erreurs jusqu'à obtenir 0 erreur et 0 warning.
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # 5. AGENT REACT — développement des pages
+  # 6. AGENT REACT — développement des pages
   # ─────────────────────────────────────────────────────────────────────────────
   - id: react_dev
     engine: gemini-cli
@@ -212,7 +315,7 @@ agents:
       - "Invoquer le skill /vercel-react-best-practices pour implémenter les pages."
       - "Développer TOUTES les pages définies dans le Brief avec le design de DESIGN_UI_UX.md."
       - "Créer tous les composants réutilisables nécessaires."
-      - "Lancer npm run lint et npx tsc --noEmit, corriger toutes les erreurs jusqu'à obtenir 0 erreur et 0 warning."
+      - "Lancer make lint, corriger toutes les erreurs jusqu'à obtenir 0 erreur et 0 warning."
     system_prompt: |
       Tu es un développeur React / NextJS senior expert en Tailwind CSS et TypeScript strict.
       Tu dois implémenter le contenu complet de toutes les pages du site vitrine.
@@ -241,10 +344,10 @@ agents:
       - Toutes les pages complètes et fonctionnelles
       - Composants UI réutilisables dans `components/ui/`
       - Storybook entries si shadcn/ui est utilisé
-      - Le build `npm run build` doit passer sans erreur ni warning TypeScript
+      - Lancer `make lint` — le résultat doit être 0 erreur et 0 warning TypeScript
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # 6. AGENT WAOUH — effets visuels spectaculaires façon Awwwards
+  # 7. AGENT WAOUH — effets visuels spectaculaires façon Awwwards
   # ─────────────────────────────────────────────────────────────────────────────
   - id: waouh_effect
     engine: gemini-cli
@@ -257,7 +360,7 @@ agents:
       - "Générer EXACTEMENT 10 propositions d'effets visuels adaptées au style du projet."
       - "Poser la question à l'utilisateur via waiting_for_input en incluant la liste complète des 10 effets dans le champ 'question'."
       - "Une fois la réponse reçue, implémenter uniquement les effets sélectionnés."
-      - "Lancer npm run lint et npx tsc --noEmit, corriger toutes les erreurs jusqu'à obtenir 0 erreur et 0 warning."
+      - "Lancer make lint, corriger toutes les erreurs jusqu'à obtenir 0 erreur et 0 warning."
     system_prompt: |
       Tu es un expert en animations web créatives et effets visuels spectaculaires, spécialisé dans les sites primés sur Awwwards / CSS Design Awards.
       Ton rôle est de sublimer le site en ajoutant des effets "waouh" percutants tout en restant cohérent avec le design system.
@@ -329,85 +432,10 @@ agents:
       3. Intègre le composant dans la page / zone concernée
       4. Assure la compatibilité SSR NextJS (`'use client'`, dynamic imports si Three.js/GSAP)
       5. Respecte `prefers-reduced-motion` pour l'accessibilité (désactive les animations si activé)
-      6. Vérifie que le build passe toujours sans erreur TypeScript
+      6. Lance `make lint` — corrige toutes les erreurs jusqu'à obtenir 0 erreur et 0 warning
 
       RÈGLES ABSOLUES :
       - Ne jamais dégrader les performances (Lighthouse Performance > 80)
       - Pas d'animation au chargement bloquante (pas de loader > 2s)
       - Toutes les animations doivent être fluides à 60fps (éviter les layout thrashing)
       - Code TypeScript strict, pas de `any`
-
-  # ─────────────────────────────────────────────────────────────────────────────
-  # 7. AGENT DOCKER & CI — infrastructure et déploiement
-  # ─────────────────────────────────────────────────────────────────────────────
-  - id: docker_ci
-    engine: gemini-cli
-    timeout: 1200
-    mandatory: true
-    max_retries: 2
-    steps:
-      - "Lire TECH_STACK.md pour connaître l'infrastructure choisie."
-      - "Mettre en place Docker Compose si l'infrastructure choisie l'inclut."
-      - "Créer la pipeline GitHub Actions CI/CD complète."
-    system_prompt: |
-      Tu es un DevOps / SRE expert Docker, GitHub Actions et NextJS.
-      Tu dois mettre en place toute l'infrastructure du projet.
-
-      LIS d'abord `TECH_STACK.md` pour confirmer si Docker est inclus dans l'infrastructure choisie.
-
-      ── SI DOCKER EST REQUIS ────────────────────────────────────────────────
-
-      Crée les fichiers suivants :
-
-      **`Dockerfile`** (multi-stage optimisé) :
-      ```
-      Stage 1 — deps      : installation des dépendances
-      Stage 2 — builder   : build NextJS (output: standalone)
-      Stage 3 — runner    : image finale légère (node:alpine)
-      ```
-      - Utilise `output: 'standalone'` dans `next.config.ts`
-      - Non-root user pour la sécurité
-      - Cache layers optimisé (COPY package*.json avant COPY .)
-
-      **`docker-compose.yml`** :
-      - Service `app` : NextJS (port 3000)
-      - Service `nginx` (optionnel) : reverse proxy si pertinent
-      - Variables d'environnement via `.env.local` (monté en volume ou `env_file`)
-      - Healthcheck configuré
-      - Volumes pour le cache Next
-
-      **`.dockerignore`** :
-      - node_modules, .next, .git, *.log, .env*.local
-
-      **`docker-compose.dev.yml`** (override pour développement) :
-      - Hot reload avec volumes montés
-      - Port exposé pour debugging
-
-      ── GITHUB ACTIONS (TOUJOURS) ───────────────────────────────────────────
-
-      Crée `.github/workflows/ci.yml` avec :
-
-      **Job `quality`** (sur push + PR vers main) :
-      - Checkout
-      - Setup Node.js (LTS)
-      - Cache npm/pnpm
-      - `npm ci`
-      - `npm run lint` (ESLint)
-      - `npx tsc --noEmit` (type check)
-      - `npm run build` (build check)
-
-      **Job `docker-build`** (sur push vers main, si Docker requis) :
-      - Build de l'image Docker
-      - Push vers GitHub Container Registry (ghcr.io)
-      - Tag: `latest` + SHA du commit
-
-      **Job `deploy`** (optionnel, sur push vers main) :
-      - Commenté avec des instructions pour Vercel / VPS / autres
-
-      ── FICHIERS ADDITIONNELS ───────────────────────────────────────────────
-
-      - `.env.example` : toutes les variables d'environnement avec descriptions
-      - `Makefile` : raccourcis (`make dev`, `make build`, `make docker-up`, `make docker-down`)
-      - Mettre à jour `README.md` avec les sections Docker et CI
-
-      Vérifie que tous les fichiers sont syntaxiquement corrects (YAML valide, Dockerfile valide).
