@@ -12,3 +12,4 @@ Route::delete('/runs/{id}', [RunController::class, 'destroy']);
 Route::get('/runs/{id}/stream', [SseController::class, 'stream']);
 Route::get('/runs/{id}/log', [RunController::class, 'log']);
 Route::post('/runs/{id}/retry-step', [RunController::class, 'retryStep']);
+Route::post('/runs/{id}/answer', [RunController::class, 'answer']);

@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Drivers\DriverResolver;
 use App\Events\AgentBubble;
 use App\Events\AgentStatusChanged;
+use App\Events\AgentWaitingForInput;
 use App\Events\RunCompleted;
 use App\Events\RunError;
 use App\Exceptions\AgentTimeoutException;
@@ -255,6 +256,78 @@ class RunService
                 }
             } while ($attempt <= $maxRetries);
 
+            // Si l'agent demande une interaction utilisateur — pause et polling
+            if ($decoded['status'] === 'waiting_for_input') {
+                $question = (string) $decoded['question'];
+
+                cache()->put("run:{$runId}:pending_question:{$agentId}", $question, 3600);
+                event(new AgentStatusChanged($runId, $agentId, 'waiting_for_input', $stepIndex, $question));
+                event(new AgentWaitingForInput($runId, $agentId, $question, $stepIndex));
+
+                // Checkpoint avant d'attendre : permet un retry si le run est relancé
+                $this->checkpointService->write($runPath, [
+                    'runId'           => $runId,
+                    'workflowFile'    => $workflowFile,
+                    'brief'           => $brief,
+                    'completedAgents' => $completedAgents,
+                    'currentAgent'    => $agentId,
+                    'currentStep'     => $stepIndex,
+                    'context'         => $runPath . '/session.md',
+                ]);
+
+                // Polling jusqu'à réception de la réponse (max 15 min = 900 itérations)
+                $answer = null;
+                for ($i = 0; $i < 900; $i++) {
+                    if (cache()->get("run:{$runId}:cancelled", false)) {
+                        throw new RunCancelledException($runId);
+                    }
+                    $answer = cache()->get("run:{$runId}:user_answer:{$agentId}");
+                    if ($answer !== null) {
+                        break;
+                    }
+                    sleep(1);
+                }
+
+                if ($answer === null) {
+                    $msg = "Délai de réponse dépassé pour l'agent {$agentId}";
+                    event(new AgentStatusChanged($runId, $agentId, 'error', $stepIndex, $msg));
+                    event(new RunError(
+                        runId:          $runId,
+                        agentId:        $agentId,
+                        step:           $stepIndex,
+                        message:        $msg,
+                        checkpointPath: $runPath . '/checkpoint.json',
+                    ));
+                    cache()->put("run:{$runId}:error_emitted", true, 60);
+                    $this->artifactService->finalizeRun($runPath, 'error', (int) round((microtime(true) - $startedAt) * 1000), count($completedAgents));
+                    throw new \RuntimeException($msg);
+                }
+
+                // Injecter la Q&R dans le contexte partagé pour les agents suivants
+                $completedAgents[] = $agentId;
+                $agentResults[]    = ['id' => $agentId, 'status' => 'done', 'question' => $question, 'answer' => $answer];
+
+                $nextStepIndex = $stepIndex + 1;
+                $nextAgentId   = $workflow['agents'][$nextStepIndex]['id'] ?? null;
+                $this->checkpointService->write($runPath, [
+                    'runId'           => $runId,
+                    'workflowFile'    => $workflowFile,
+                    'brief'           => $brief,
+                    'completedAgents' => $completedAgents,
+                    'currentAgent'    => $nextAgentId,
+                    'currentStep'     => $nextStepIndex,
+                    'context'         => $runPath . '/session.md',
+                ]);
+
+                $qaEntry = "**Question :** {$question}\n**Réponse utilisateur :** {$answer}";
+                $this->artifactService->appendAgentOutput($runPath, $agentId, $qaEntry);
+                $context = $this->artifactService->getContextContent($runPath);
+
+                event(new AgentBubble($runId, $agentId, $answer, $stepIndex));
+                event(new AgentStatusChanged($runId, $agentId, 'done', $stepIndex, ''));
+                continue;
+            }
+
             $this->artifactService->appendAgentOutput($runPath, $agentId, $rawOutput);
 
             // Signal de skip : l'agent demande à sauter le prochain (pris en compte si skippable)
@@ -405,6 +478,12 @@ class RunService
         foreach ($required as $field) {
             if (! array_key_exists($field, $decoded)) {
                 throw new InvalidJsonOutputException($agentId, $rawOutput, "Missing field: {$field}");
+            }
+        }
+
+        if ($decoded['status'] === 'waiting_for_input') {
+            if (! isset($decoded['question']) || ! is_string($decoded['question']) || $decoded['question'] === '') {
+                throw new InvalidJsonOutputException($agentId, $rawOutput, "Missing field: question must be a non-empty string (required when status is waiting_for_input)");
             }
         }
 

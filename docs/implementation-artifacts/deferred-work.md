@@ -1,5 +1,14 @@
 # Deferred Work
 
+## Deferred from: agent-user-interaction review (2026-04-14)
+
+- **État agent perdu au refresh** — `agentStatusStore` est en mémoire ; après refresh, la question `waiting_for_input` disparaît et l'utilisateur ne peut plus répondre (run bloqué jusqu'au timeout). À corriger via persistance sessionStorage ou replay SSE côté backend.
+- **SSE keepalive pendant le polling** — Pendant les 15 min d'attente, aucun heartbeat n'est émis. Les proxys/load balancers peuvent couper la connexion SSE. À corriger avec un `echo ": heartbeat\n\n"` toutes les 30s dans la boucle de polling.
+- **Autorisation sur POST /runs/{id}/answer** — Aucune authentification. Quiconque connaît un runId peut injecter une réponse. Pre-existing : l'app n'a pas d'auth. À traiter lors d'un epic sécurité.
+- **VALID_AGENT_STATUSES manque 'skipped'** — Pre-existing dans `sseEventParser.ts`. `parseAgentStatusChanged` rejetterait un event `skipped` s'il était réémis via le parser de statut (ne l'est pas actuellement).
+
+
+
 ## Deferred from: code review of 1-1-initialisation-des-projets-next-js-et-laravel (2026-04-04)
 
 - **CORS non configuré** — Laravel `config/cors.php` non modifié. Pas nécessaire en dev local (proxy Next.js gère la séparation), mais à configurer pour tout déploiement non-localhost.

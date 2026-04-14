@@ -140,12 +140,54 @@ class RunController extends Controller
         cache()->forget("run:{$id}:error_emitted");
         cache()->forget("run:{$id}:cancelled");
 
+        // Effacer la réponse utilisateur en attente sur l'agent fautif
+        // pour éviter qu'une ancienne réponse soit réutilisée sans re-prompt
+        $currentAgentId = $checkpoint['currentAgent'] ?? null;
+        if ($currentAgentId) {
+            cache()->forget("run:{$id}:user_answer:{$currentAgentId}");
+            cache()->forget("run:{$id}:pending_question:{$currentAgentId}");
+        }
+
         // Stocker le checkpoint pour le stream SSE
         cache()->put("run:{$id}:retry_checkpoint", $checkpoint, 3600);
 
         return response()->json([
             'runId'  => $id,
             'status' => 'retrying',
+        ], 202);
+    }
+
+    public function answer(Request $request, string $id): JsonResponse
+    {
+        $validated = $request->validate([
+            'agentId' => ['required', 'string'],
+            'answer'  => ['required', 'string', 'min:1'],
+        ]);
+
+        if (! cache()->has("run:{$id}") && ! cache()->has("run:{$id}:path")) {
+            return response()->json([
+                'message' => "Run not found or already completed: {$id}",
+                'code'    => 'RUN_NOT_FOUND',
+            ], 404);
+        }
+
+        $cacheKey = "run:{$id}:user_answer:{$validated['agentId']}";
+
+        // Idempotent : si une réponse est déjà enregistrée, ne pas l'écraser
+        if (cache()->has($cacheKey)) {
+            return response()->json([
+                'runId'   => $id,
+                'agentId' => $validated['agentId'],
+                'status'  => 'already_answered',
+            ], 200);
+        }
+
+        cache()->put($cacheKey, $validated['answer'], 3600);
+
+        return response()->json([
+            'runId'   => $id,
+            'agentId' => $validated['agentId'],
+            'status'  => 'accepted',
         ], 202);
     }
 
