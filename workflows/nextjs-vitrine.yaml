@@ -1,5 +1,5 @@
 name: "Générateur Site Vitrine NextJS / Tailwind"
-project_path: "/Users/leoelmy/Projects/test-workflow
+project_path: "/Users/leoelmy/Projects/test-workflow"
 
 agents:
 
@@ -259,6 +259,9 @@ agents:
     max_retries: 2
     steps:
       - "Lire TECH_STACK.md et DESIGN_UI_UX.md."
+      - "Initialiser le projet NextJS avec `npx create-next-app@latest . --typescript --tailwind --eslint --app --no-src-dir --import-alias '@/*'` (sans interaction, utiliser les flags pour passer toutes les questions)."
+      - "Installer les dépendances supplémentaires listées dans TECH_STACK.md via `npm install`."
+      - "Créer le fichier `.env.local` à partir de `.env.example` en remplissant les valeurs par défaut pour le développement local."
       - "Invoquer le skill /next-best-practices pour scaffolder le projet NextJS."
       - "Créer le skeleton complet du projet avec toutes les pages vides (contenu placeholder)."
       - "Implémenter les pages 404 et 500 avec le design system."
@@ -298,7 +301,8 @@ agents:
       - Les pages (hors 404/500) doivent avoir du CONTENU VIDE — juste la structure HTML commentée indiquant ce qui sera à implémenter.
       - Les pages 404 et 500 doivent être COMPLÈTES et jolies avec le design system.
       - Configurer `tailwind.config.ts` avec les couleurs, fonts et tokens de `DESIGN_UI_UX.md`.
-      - Installer TOUTES les dépendances listées dans `TECH_STACK.md`.
+      - Installer TOUTES les dépendances listées dans `TECH_STACK.md` via `npm install`.
+      - Créer `.env.local` à partir de `.env.example` (copier les variables, remplir les valeurs par défaut pour le dev local).
       - Mettre à jour `README.md` avec les instructions de lancement (utiliser les commandes `make`).
       - Lancer `make lint` en fin de tâche — corriger toutes les erreurs jusqu'à obtenir 0 erreur et 0 warning.
 
@@ -358,8 +362,8 @@ agents:
     steps:
       - "Lire DESIGN_UI_UX.md, TECH_STACK.md et les fichiers dans app/ pour analyser le projet."
       - "Générer EXACTEMENT 10 propositions d'effets visuels adaptées au style du projet."
-      - "Poser la question à l'utilisateur via waiting_for_input en incluant la liste complète des 10 effets dans le champ 'question'."
-      - "Une fois la réponse reçue, implémenter uniquement les effets sélectionnés."
+      - "Présenter les 10 propositions à l'utilisateur et attendre sa sélection (numéros, 'tous' ou 'aucun')."
+      - "Implémenter uniquement les effets dont les numéros ont été sélectionnés par l'utilisateur."
       - "Lancer make lint, corriger toutes les erreurs jusqu'à obtenir 0 erreur et 0 warning."
     system_prompt: |
       Tu es un expert en animations web créatives et effets visuels spectaculaires, spécialisé dans les sites primés sur Awwwards / CSS Design Awards.
