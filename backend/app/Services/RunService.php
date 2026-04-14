@@ -106,16 +106,28 @@ class RunService
         float  $startedAt,
         bool   $firstWorkingEmitted = false,
     ): void {
-        $workflowFile = $workflow['file'];
-        $agentResults = array_map(fn ($id) => ['id' => $id, 'status' => 'done'], $completedAgents);
-        $context      = $this->artifactService->getContextContent($runPath);
+        $workflowFile  = $workflow['file'];
+        $agentResults  = array_map(fn ($id) => ['id' => $id, 'status' => 'done'], $completedAgents);
+        $context       = $this->artifactService->getContextContent($runPath);
+        $skipNextAgent = false;
 
         foreach ($workflow['agents'] as $stepIndex => $agent) {
             if ($stepIndex < $startStep) {
                 continue; // Skip agents déjà complétés dans un retry
             }
 
-            $agentId = $agent['id'];
+            $agentId     = $agent['id'];
+            $isSkippable = isset($agent['skippable']) && $agent['skippable'] === true;
+
+            // Si l'agent précédent a demandé un skip et que cet agent est skippable — on saute
+            if ($skipNextAgent && $isSkippable) {
+                $skipNextAgent   = false;
+                $completedAgents[] = $agentId;
+                $agentResults[]  = ['id' => $agentId, 'status' => 'skipped'];
+                event(new AgentStatusChanged($runId, $agentId, 'skipped', $stepIndex, ''));
+                continue;
+            }
+            $skipNextAgent = false; // Signal ignoré si l'agent n'est pas skippable
 
             if (cache()->get("run:{$runId}:cancelled", false)) {
                 throw new RunCancelledException($runId);
@@ -128,7 +140,9 @@ class RunService
                 ? $agent['timeout']
                 : (int) (config('xu-workflow.default_timeout') ?? 120);
 
-            $systemPrompt = $this->resolveSystemPrompt($agent);
+            $systemPrompt    = $this->resolveSystemPrompt($agent);
+            $nextAgent       = $workflow['agents'][$stepIndex + 1] ?? null;
+            $nextIsSkippable = isset($nextAgent['skippable']) && $nextAgent['skippable'] === true;
 
             // Retry : même pattern que $timeout (champ optionnel, valeurs par défaut sûres)
             $isMandatory = isset($agent['mandatory']) && $agent['mandatory'] === true;
@@ -167,7 +181,7 @@ class RunService
                     $rawOutput = $driver->execute(
                         $workflow['project_path'],
                         $systemPrompt,
-                        $this->buildAgentContext($context, $agent),
+                        $this->buildAgentContext($context, $agent, $nextIsSkippable),
                         $timeout
                     );
                     $decoded = $this->validateJsonOutput($agentId, $rawOutput);
@@ -230,6 +244,11 @@ class RunService
             } while ($attempt <= $maxRetries);
 
             $this->artifactService->appendAgentOutput($runPath, $agentId, $rawOutput);
+
+            // Signal de skip : l'agent demande à sauter le prochain (pris en compte si skippable)
+            if ($decoded['next_action'] === 'skip_next') {
+                $skipNextAgent = true;
+            }
 
             $completedAgents[] = $agentId;
             $agentResults[]    = ['id' => $agentId, 'status' => $decoded['status']];
@@ -296,7 +315,7 @@ class RunService
         return $decoded;
     }
 
-    private function buildAgentContext(string $context, array $agent): string
+    private function buildAgentContext(string $context, array $agent, bool $nextIsSkippable = false): string
     {
         $steps = $agent['steps'] ?? [];
 
@@ -312,6 +331,10 @@ class RunService
         $result .= "\n\n---\n## Required output format\n"
             . "Respond with ONLY this JSON object — no markdown, no code block, no extra text:\n"
             . '{"step": "<brief description of what you did>", "status": "done", "output": "<your full response>", "next_action": null, "errors": []}';
+
+        if ($nextIsSkippable) {
+            $result .= "\n\nNote: set \"next_action\" to \"skip_next\" if you determine the next agent is not needed for this request.";
+        }
 
         return $result;
     }

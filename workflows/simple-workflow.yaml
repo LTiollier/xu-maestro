@@ -15,6 +15,7 @@ agents:
     timeout: 600
     mandatory: true      # relancé automatiquement en cas d'échec (jusqu'à max_retries fois)
     max_retries: 2       # 2 retries → 3 tentatives au total (défaut : 0 si absent)
+    skippable: true      # l'agent précédent peut sauter cet agent via next_action: "skip_next"
     steps:
       - "Étape 2 — Dev"
     system_prompt: "Tu es un Dev, tu executes la demande."

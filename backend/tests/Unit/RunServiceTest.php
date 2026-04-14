@@ -138,7 +138,7 @@ class RunServiceTest extends TestCase
             ->with(
                 '/tmp/test',
                 '',
-                '# context from session.md',
+                $this->stringContains('# context from session.md'),
                 $this->anything()
             )
             ->willReturn($this->validOutput());
@@ -191,8 +191,8 @@ class RunServiceTest extends TestCase
         $service        = new RunService($resolver, $yaml, $mockArtifact, $mockCheckpoint);
         $service->execute('test-run-id', 'multi.yaml', 'brief');
 
-        $this->assertSame('# initial session content', $calls[0]);
-        $this->assertSame('# session content after agent-1', $calls[1]);
+        $this->assertStringContainsString('# initial session content', $calls[0]);
+        $this->assertStringContainsString('# session content after agent-1', $calls[1]);
     }
 
     #[Test]
@@ -311,6 +311,79 @@ class RunServiceTest extends TestCase
         // L'événement 'done' est bien émis après (code séquentiel : write → event)
         Event::assertDispatched(AgentStatusChanged::class, function (AgentStatusChanged $e) {
             return $e->status === 'done' && $e->agentId === 'agent-one';
+        });
+    }
+
+    #[Test]
+    public function it_skips_next_agent_when_skip_signal_received_and_agent_is_skippable(): void
+    {
+        $workflow = [
+            'name'         => 'Skip Workflow',
+            'project_path' => '/tmp/test',
+            'file'         => 'skip.yaml',
+            'agents'       => [
+                ['id' => 'agent-pm', 'engine' => 'claude-code'],
+                ['id' => 'agent-dev', 'engine' => 'claude-code', 'skippable' => true],
+            ],
+        ];
+
+        $outputWithSkip = json_encode([
+            'step'        => 'analyse',
+            'status'      => 'done',
+            'output'      => 'Pas besoin de développement.',
+            'next_action' => 'skip_next',
+            'errors'      => [],
+        ]);
+
+        $this->mockYaml->method('load')->willReturn($workflow);
+        $this->mockDriver->expects($this->once()) // agent-dev NE doit PAS être exécuté
+            ->method('execute')
+            ->willReturn($outputWithSkip);
+
+        $this->service->execute('run-skip', 'skip.yaml', 'question sans code');
+
+        // agent-dev doit recevoir un événement 'skipped'
+        Event::assertDispatched(AgentStatusChanged::class, function (AgentStatusChanged $e) {
+            return $e->agentId === 'agent-dev' && $e->status === 'skipped';
+        });
+
+        // agent-dev ne doit PAS recevoir 'working'
+        Event::assertNotDispatched(AgentStatusChanged::class, function (AgentStatusChanged $e) {
+            return $e->agentId === 'agent-dev' && $e->status === 'working';
+        });
+    }
+
+    #[Test]
+    public function it_does_not_skip_agent_without_skippable_flag(): void
+    {
+        $workflow = [
+            'name'         => 'No Skip Workflow',
+            'project_path' => '/tmp/test',
+            'file'         => 'noskip.yaml',
+            'agents'       => [
+                ['id' => 'agent-pm', 'engine' => 'claude-code'],
+                ['id' => 'agent-dev', 'engine' => 'claude-code'], // pas de skippable: true
+            ],
+        ];
+
+        $outputWithSkip = json_encode([
+            'step'        => 'analyse',
+            'status'      => 'done',
+            'output'      => 'Signal de skip ignoré.',
+            'next_action' => 'skip_next',
+            'errors'      => [],
+        ]);
+
+        $this->mockYaml->method('load')->willReturn($workflow);
+        $this->mockDriver->expects($this->exactly(2)) // les deux agents doivent s'exécuter
+            ->method('execute')
+            ->willReturn($outputWithSkip);
+
+        $this->service->execute('run-noskip', 'noskip.yaml', 'brief');
+
+        // agent-dev doit toujours recevoir 'working' malgré le signal
+        Event::assertDispatched(AgentStatusChanged::class, function (AgentStatusChanged $e) {
+            return $e->agentId === 'agent-dev' && $e->status === 'working';
         });
     }
 
