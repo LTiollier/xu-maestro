@@ -88,8 +88,26 @@ class YamlService
             if (! isset($agent['engine']) || ! is_string($agent['engine']) || $agent['engine'] === '') {
                 return false;
             }
-            if (! in_array($agent['engine'], ['claude-code', 'gemini-cli'], true)) {
+            if (! in_array($agent['engine'], ['claude-code', 'gemini-cli', 'sub-workflow'], true)) {
                 return false;
+            }
+            if ($agent['engine'] === 'sub-workflow') {
+                if (! isset($agent['workflow_file']) || ! is_string($agent['workflow_file']) || $agent['workflow_file'] === '') {
+                    return false;
+                }
+                $workflowsPath = config('xu-workflow.workflows_path');
+                if (! is_string($workflowsPath) || $workflowsPath === '') {
+                    return false;
+                }
+                $subFile = $workflowsPath . '/' . basename($agent['workflow_file']);
+                if (! is_file($subFile)) {
+                    return false;
+                }
+                try {
+                    \Symfony\Component\Yaml\Yaml::parseFile($subFile);
+                } catch (\Symfony\Component\Yaml\Exception\ParseException) {
+                    return false;
+                }
             }
         }
 

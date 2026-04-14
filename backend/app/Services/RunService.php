@@ -133,6 +133,18 @@ class RunService
                 throw new RunCancelledException($runId);
             }
 
+            // Handle sub-workflow nodes inline
+            if ($agent['engine'] === 'sub-workflow') {
+                $this->executeSubWorkflowNode(
+                    $runId, $agent, $runPath, $brief, $stepIndex,
+                    $completedAgents, $agentResults, $startedAt
+                );
+                $completedAgents[] = $agentId;
+                $agentResults[]    = ['id' => $agentId, 'status' => 'done'];
+                $context = $this->artifactService->getContextContent($runPath);
+                continue;
+            }
+
             $driver = $this->driverResolver->for($agent['engine']);
 
             // Patch A5 rétro Épic 2 : éviter (int) config(..., 120) qui caste null en 0
@@ -278,6 +290,90 @@ class RunService
         $duration = (int) round((microtime(true) - $startedAt) * 1000);
         $this->artifactService->finalizeRun($runPath, 'completed', $duration, count($agentResults));
         event(new RunCompleted($runId, $duration, count($agentResults), 'completed', $runPath));
+    }
+
+    private function executeSubWorkflowNode(
+        string $runId,
+        array  $nodeAgent,
+        string $runPath,
+        string $brief,
+        int    $stepIndex,
+        array  &$completedAgents,
+        array  &$agentResults,
+        float  $startedAt,
+    ): void {
+        $nodeId = $nodeAgent['id'];
+
+        // Emit working on the sub-workflow node itself
+        event(new AgentStatusChanged($runId, $nodeId, 'working', $stepIndex, ''));
+
+        try {
+            $subWorkflow = $this->yamlService->load($nodeAgent['workflow_file']);
+
+            // Guard against recursive nesting — halt gracefully
+            foreach ($subWorkflow['agents'] as $subAgent) {
+                if (isset($subAgent['engine']) && $subAgent['engine'] === 'sub-workflow') {
+                    throw new \RuntimeException("Recursive sub-workflow nesting is not supported (node: {$nodeId})");
+                }
+            }
+
+            $isMandatory = isset($nodeAgent['mandatory']) && $nodeAgent['mandatory'] === true;
+
+            foreach ($subWorkflow['agents'] as $subAgent) {
+                if (cache()->get("run:{$runId}:cancelled", false)) {
+                    throw new RunCancelledException($runId);
+                }
+
+                $prefixedId = $nodeId . '--' . $subAgent['id'];
+
+                // Sub-agent timeout
+                $timeout = isset($subAgent['timeout']) && is_int($subAgent['timeout']) && $subAgent['timeout'] > 0
+                    ? $subAgent['timeout']
+                    : (int) (config('xu-workflow.default_timeout') ?? 120);
+
+                $subIsMandatory = isset($subAgent['mandatory']) && $subAgent['mandatory'] === true;
+
+                $systemPrompt = $this->resolveSystemPrompt($subAgent);
+                $context      = $this->artifactService->getContextContent($runPath);
+
+                $driver    = $this->driverResolver->for($subAgent['engine']);
+                $rawOutput = $driver->execute(
+                    $subWorkflow['project_path'],
+                    $systemPrompt,
+                    $this->buildAgentContext($context, $subAgent),
+                    $timeout
+                );
+
+                $this->artifactService->appendAgentOutput($runPath, $prefixedId, $rawOutput);
+
+                try {
+                    $this->validateJsonOutput($prefixedId, $rawOutput);
+                } catch (\Throwable $e) {
+                    if ($subIsMandatory) {
+                        throw $e;
+                    }
+                    // Non-mandatory sub-agent failure is tolerated
+                    continue;
+                }
+            }
+
+            event(new AgentStatusChanged($runId, $nodeId, 'done', $stepIndex, ''));
+        } catch (RunCancelledException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            $msg = $e->getMessage();
+            event(new AgentStatusChanged($runId, $nodeId, 'error', $stepIndex, $msg));
+            event(new RunError(
+                runId:          $runId,
+                agentId:        $nodeId,
+                step:           $stepIndex,
+                message:        $msg,
+                checkpointPath: $runPath . '/checkpoint.json',
+            ));
+            cache()->put("run:{$runId}:error_emitted", true, 60);
+            $this->artifactService->finalizeRun($runPath, 'error', (int) round((microtime(true) - $startedAt) * 1000), count($completedAgents));
+            throw $e;
+        }
     }
 
     private function validateJsonOutput(string $agentId, string $rawOutput): array
