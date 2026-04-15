@@ -27,9 +27,6 @@ agents:
         2. **Cible** : Qui sont les visiteurs visés ? (grand public, professionnels B2B, recruteurs…)
         3. **Objectif principal** : Quel est le but du site ? (générer des leads, présenter un portfolio, informer, vendre…)
         4. **Pages** : Quelles pages faut-il ? (Accueil, À propos, Services, Contact, Blog…) — propose une structure par défaut si l'utilisateur n'a pas d'idée.
-        5. **Contenu existant** : Y a-t-il du contenu textuel / des assets visuels déjà préparés, ou faut-il les inventer (Lorem Ipsum / placeholders) ?
-        6. **Contraintes techniques** : Domaine, hébergement souhaité, intégrations (CRM, formulaire, analytics…) ?
-        7. **Délai / urgence** : Y a-t-il une date de mise en ligne souhaitée ?
 
       Une fois TOUS ces points couverts, produis un **Brief Projet** au format Markdown et conclus en indiquant que tu passes la main au Lead Dev.
 
