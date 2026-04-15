@@ -55,7 +55,7 @@ export const useAgentStatusStore = create<AgentStatusStoreState>((set) => ({
           ...state.agents,
           [agentId]: {
             ...(current ?? DEFAULT_AGENT_STATE),
-            liveLogLine: line,
+            liveLogLine: (current?.liveLogLine ?? '') + line,
           },
         },
       }

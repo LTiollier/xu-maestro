@@ -24,6 +24,11 @@ class LogSseController extends Controller
         return new StreamedResponse(function () use ($id) {
             set_time_limit(0);
             ignore_user_abort(true);
+
+            if (session()->isStarted()) {
+                session()->writeClose();
+            }
+
             $this->sseStreamService->setHeaders();
 
             $runPath     = null;

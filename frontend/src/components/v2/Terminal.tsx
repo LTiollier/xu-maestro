@@ -4,19 +4,24 @@ import React, { useEffect, useRef, useState } from 'react'
 import { useRunStore } from '@/stores/runStore'
 import { useAgentStatusStore } from '@/stores/agentStatusStore'
 import { useSSEListener } from '@/hooks/useSSEListener'
-import { Terminal as TerminalIcon, CheckCircle2, AlertCircle, Play, Square, History, Loader2 } from 'lucide-react'
+import { Terminal as TerminalIcon, CheckCircle2, AlertCircle, Play, Square, History, Loader2, Send, MessageSquare } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { useWorkflowStore } from '@/stores/workflowStore'
 import { RunHistory } from '@/components/RunHistory'
+import { cn } from '@/lib/utils'
 
 export function Terminal() {
   const { runId, status, retryKey, setRunId, resetRun, setRetrying, duration, runFolder, errorMessage } = useRunStore()
   const { selectedWorkflow } = useWorkflowStore()
+  const agentStatuses = useAgentStatusStore((s) => s.agents)
+  
   const [logContent, setLogContent] = useState('')
   const [brief, setBrief] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isHistoryOpen, setIsHistoryOpen] = useState(false)
+  const [answer, setAnswer] = useState('')
+  const [isAnswering, setIsAnswering] = useState(false)
   
   const scrollRef = useRef<HTMLDivElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
@@ -24,29 +29,69 @@ export function Terminal() {
   // SSE Listener
   useSSEListener(runId, retryKey)
 
+  // Detect agent waiting for input
+  const waitingAgentId = Object.keys(agentStatuses).find(id => agentStatuses[id].status === 'waiting_for_input')
+  const waitingAgent = waitingAgentId ? agentStatuses[waitingAgentId] : null
+
   useEffect(() => {
     if (!runId) {
       setLogContent('')
       return
     }
 
-    const es = new EventSource(`/api/runs/${runId}/log-stream`)
-    es.addEventListener('log.append', (e: MessageEvent) => {
-      try {
-        const { chunk } = JSON.parse(e.data) as { chunk: string }
-        setLogContent(prev => prev + chunk)
-      } catch {}
-    })
-    es.addEventListener('log.done', () => es.close())
-    es.onerror = () => es.close()
-    return () => es.close()
+    let es: EventSource | null = null
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+    let reconnectAttempts = 0
+    let isFirstOpen = true
+    let destroyed = false
+
+    const setupEs = () => {
+      if (destroyed) return
+
+      es = new EventSource(`/api/runs/${runId}/log-stream`)
+
+      es.onopen = () => {
+        if (!isFirstOpen && !destroyed) {
+          // Le backend rejoue depuis le début — réinitialiser pour éviter les doublons
+          setLogContent('')
+        }
+        isFirstOpen = false
+      }
+
+      es.addEventListener('log.append', (e: MessageEvent) => {
+        try {
+          const { chunk } = JSON.parse(e.data) as { chunk: string }
+          if (!destroyed) setLogContent(prev => prev + chunk)
+        } catch {}
+      })
+
+      es.addEventListener('log.done', () => es?.close())
+
+      es.onerror = () => {
+        if (destroyed) return
+        es?.close()
+        if (reconnectAttempts < 5) {
+          reconnectAttempts++
+          const delay = Math.min(1000 * Math.pow(2, reconnectAttempts - 1), 30_000)
+          reconnectTimer = setTimeout(setupEs, delay)
+        }
+      }
+    }
+
+    setupEs()
+
+    return () => {
+      destroyed = true
+      if (reconnectTimer) clearTimeout(reconnectTimer)
+      es?.close()
+    }
   }, [runId, retryKey])
 
   useEffect(() => {
     if (status === 'running') {
       bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
     }
-  }, [logContent, status])
+  }, [logContent, status, waitingAgentId])
 
   const handleLancer = async () => {
     if (!selectedWorkflow || !brief.trim() || isSubmitting) return
@@ -93,6 +138,25 @@ export function Terminal() {
     }
   }
 
+  const handleSendAnswer = async () => {
+    if (!runId || !waitingAgentId || !answer.trim() || isAnswering) return
+    setIsAnswering(true)
+    try {
+      const res = await fetch(`/api/runs/${runId}/answer`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agentId: waitingAgentId, answer: answer.trim() }),
+      })
+      if (res.ok) {
+        setAnswer('')
+      }
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setIsAnswering(false)
+    }
+  }
+
   const parseLogs = () => {
     if (!logContent) return []
     const parts = logContent.split('---\n## Agent:')
@@ -105,6 +169,18 @@ export function Terminal() {
   const logAgents = parseLogs()
 
   const renderContent = (content: string) => {
+    // Try to parse as JSON if it looks like it
+    if (content.trim().startsWith('{')) {
+      try {
+        const parsed = JSON.parse(content)
+        if (parsed.output) {
+          return renderContent(parsed.output)
+        }
+      } catch {
+        // Fallback to raw text if parsing fails
+      }
+    }
+
     return content.split('\n').map((line, i) => {
       if (line.startsWith('**Question :**')) {
         return (
@@ -138,7 +214,15 @@ export function Terminal() {
         </div>
         
         <div className="flex items-center gap-4">
-          {status === 'running' && (
+          {waitingAgentId && (
+            <div className="flex items-center gap-2">
+              <MessageSquare className="w-3 h-3 text-amber-500 animate-pulse" />
+              <span className="text-[10px] font-bold text-amber-500 uppercase tracking-wider">
+                Waiting for you...
+              </span>
+            </div>
+          )}
+          {status === 'running' && !waitingAgentId && (
             <div className="flex items-center gap-2">
               <Loader2 className="w-3 h-3 text-blue-500 animate-spin" />
               <span className="text-[10px] font-bold text-blue-500 uppercase tracking-wider animate-pulse">
@@ -196,6 +280,68 @@ export function Terminal() {
               </p>
             </div>
           ) : null}
+
+          {/* Current Working Agent Live Log */}
+          {Object.entries(agentStatuses).map(([id, agent]) => {
+            if (agent.status !== 'working' || !agent.liveLogLine) return null
+            // Only show live log if not already in logAgents (though names might differ slightly)
+            if (logAgents.some(la => la.name === id)) return null
+            
+            return (
+              <div key={id} className="flex flex-col gap-2">
+                <div className="flex items-center gap-3 mb-1">
+                  <span className="text-blue-400 font-bold">[{id}]</span>
+                  <div className="h-px flex-1 bg-zinc-900" />
+                  <Loader2 className="w-3 h-3 text-blue-500 animate-spin" />
+                </div>
+                <div className="text-zinc-400 leading-relaxed whitespace-pre-wrap pl-4 border-l border-zinc-800 italic text-[12px]">
+                  {agent.liveLogLine}
+                </div>
+              </div>
+            )
+          })}
+
+          {/* Interaction Area: Question from Agent */}
+          {waitingAgent && (
+            <div className="flex flex-col gap-4">
+              <div className="flex items-center gap-3 mb-1">
+                <span className="text-amber-500 font-bold">[{waitingAgentId}]</span>
+                <div className="h-px flex-1 bg-zinc-900" />
+                <MessageSquare className="w-3 h-3 text-amber-500 animate-pulse" />
+              </div>
+              <div className="pl-4 border-l border-amber-500/30 flex flex-col gap-4">
+                <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20">
+                  <span className="text-[10px] font-bold text-amber-400 uppercase tracking-widest font-mono block mb-2">Agent Question</span>
+                  <div className="text-sm text-amber-100 leading-relaxed whitespace-pre-wrap">
+                    {waitingAgent.question}
+                  </div>
+                </div>
+
+                <div className="relative group">
+                  <Textarea
+                    value={answer}
+                    onChange={(e) => setAnswer(e.target.value)}
+                    placeholder="Tape ta réponse ici..."
+                    className="w-full bg-zinc-900/50 border-zinc-800 focus:border-amber-500/50 focus:ring-0 text-zinc-200 resize-none h-24 p-4 rounded-xl font-sans text-sm"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault()
+                        handleSendAnswer()
+                      }
+                    }}
+                  />
+                  <Button
+                    size="icon"
+                    onClick={handleSendAnswer}
+                    disabled={!answer.trim() || isAnswering}
+                    className="absolute bottom-3 right-3 h-10 w-10 rounded-lg bg-amber-600 hover:bg-amber-500 text-white shadow-lg shadow-amber-900/20"
+                  >
+                    {isAnswering ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Global Error Banner and Retry */}
           {status === 'error' && (

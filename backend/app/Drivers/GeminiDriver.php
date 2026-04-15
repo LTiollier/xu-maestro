@@ -9,22 +9,85 @@ class GeminiDriver implements DriverInterface
 {
     public function execute(string $projectPath, string $systemPrompt, string $context, int $timeout, ?callable $onOutput = null): string
     {
-        $command = 'gemini --prompt "" --yolo';
+        $command = 'gemini --prompt "" --yolo --output-format stream-json';
 
         $input = $systemPrompt !== ''
             ? $systemPrompt . "\n\n" . $context
             : $context;
 
+        $buffer              = '';
+        $accumulatedResponse = '';
+
+        $parseLine = function (string $line) use (&$accumulatedResponse, $onOutput): void {
+            $data = json_decode($line, true);
+
+            if (! is_array($data)) {
+                return;
+            }
+
+            $type = $data['type'] ?? '';
+
+            if ($type === 'message') {
+                $role    = $data['role'] ?? '';
+                $content = $data['content'] ?? '';
+
+                // Ignore the first user message as it is the prompt we provided via stdin
+                if ($role === 'user') {
+                    return;
+                }
+
+                if ($role === 'assistant') {
+                    if ($onOutput !== null && $content !== '') {
+                        try {
+                            $onOutput($content);
+                        } catch (\Throwable) {
+                            // SSE pipe broken
+                        }
+                    }
+                    $accumulatedResponse .= $content;
+                }
+            }
+
+            // Log tool usage to provide real-time feedback
+            if ($type === 'tool_use' && $onOutput !== null) {
+                try {
+                    $toolName = $data['tool_name'] ?? 'tool';
+                    $onOutput("Executing {$toolName}...\n");
+                } catch (\Throwable) {
+                }
+            }
+        };
+
         $result = Process::path($projectPath)
             ->input($input)
             ->timeout($timeout)
-            ->run($command);
+            ->run($command, function (string $type, string $chunk) use (&$buffer, $parseLine): void {
+                if ($type !== 'out') {
+                    return;
+                }
+
+                $buffer .= $chunk;
+
+                while (($pos = strpos($buffer, "\n")) !== false) {
+                    $line   = trim(substr($buffer, 0, $pos));
+                    $buffer = substr($buffer, $pos + 1);
+
+                    if ($line !== '') {
+                        $parseLine($line);
+                    }
+                }
+            });
+
+        // Flush any remaining content in the buffer
+        if ($buffer !== '') {
+            $parseLine(trim($buffer));
+        }
 
         if ($result->failed()) {
             throw new CliExecutionException('gemini', $result->exitCode(), $result->errorOutput());
         }
 
-        return $result->output();
+        return $accumulatedResponse ?: $result->output();
     }
 
     public function kill(int $pid): void

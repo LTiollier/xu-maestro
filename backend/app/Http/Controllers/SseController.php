@@ -24,55 +24,77 @@ class SseController extends Controller
 
         return new StreamedResponse(function () use ($id, $config) {
             set_time_limit(0);
+            ignore_user_abort(true);
+
+            // Libérer le lock de session pour permettre d'autres requêtes SSE ou AJAX (FR2.4)
+            if (session()->isStarted()) {
+                session()->writeClose();
+            }
+
             $this->sseStreamService->setHeaders();
 
-            // Détection retry : pull() consomme atomiquement le checkpoint (get + forget).
-            // Si présent, le run reprend depuis le checkpoint sans passer par la garde done.
             $retryCheckpoint = cache()->pull("run:{$id}:retry_checkpoint");
-            if ($retryCheckpoint) {
-                cache()->forget("run:{$id}:event_log");
-                try {
-                    $this->runService->executeFromCheckpoint($id, $retryCheckpoint);
-                } catch (\Throwable $e) {
-                    if (! cache()->has("run:{$id}:error_emitted")) {
-                        event(new RunError(
-                            runId:          $id,
-                            agentId:        'unknown',
-                            step:           0,
-                            message:        $e->getMessage(),
-                            checkpointPath: '',
-                        ));
-                    }
-                } finally {
-                    // Garantit que done est posé même si executeFromCheckpoint lève avant son propre try/finally
-                    cache()->put("run:{$id}:done", true, 3600);
-                }
-                return;
-            }
+            $isDone          = cache()->has("run:{$id}:done");
+            $isActive        = cache()->has("run:{$id}");
 
-            // Run actif — empêcher une double exécution concurrente
-            if (cache()->has("run:{$id}")) {
-                return;
-            }
-
-            // Reconnexion — run terminé : rejouer l'intégralité du log
-            // Le frontend fermera l'EventSource sur run.completed/run.error
-            if (cache()->has("run:{$id}:done")) {
+            // Branch A: Reconnexion sur un run déjà terminé
+            if ($isDone) {
                 $log = cache()->get("run:{$id}:event_log", []);
                 foreach ($log as $entry) {
                     echo "event: {$entry['type']}\n";
                     echo "data: " . json_encode($entry['payload'], JSON_THROW_ON_ERROR) . "\n\n";
-                    flush();
                 }
+                flush();
                 return;
             }
 
+            // Branch B: Run déjà actif (reconnexion pendant exécution)
+            // On replay le log existant puis on boucle pour attendre la suite
+            if ($isActive) {
+                $log = cache()->get("run:{$id}:event_log", []);
+                $offset = count($log);
+                foreach ($log as $entry) {
+                    echo "event: {$entry['type']}\n";
+                    echo "data: " . json_encode($entry['payload'], JSON_THROW_ON_ERROR) . "\n\n";
+                }
+                flush();
+
+                while (! cache()->has("run:{$id}:done") && ! connection_aborted()) {
+                    $log = cache()->get("run:{$id}:event_log", []);
+                    $count = count($log);
+                    if ($count > $offset) {
+                        for ($i = $offset; $i < $count; $i++) {
+                            $entry = $log[$i];
+                            echo "event: {$entry['type']}\n";
+                            echo "data: " . json_encode($entry['payload'], JSON_THROW_ON_ERROR) . "\n\n";
+                            $offset++;
+                        }
+                        flush();
+                    }
+                    usleep(500000); // 500ms
+                }
+                
+                // Flush final pour les events de complétion émis juste après la boucle
+                $log = cache()->get("run:{$id}:event_log", []);
+                $count = count($log);
+                for ($i = $offset; $i < $count; $i++) {
+                    $entry = $log[$i];
+                    echo "event: {$entry['type']}\n";
+                    echo "data: " . json_encode($entry['payload'], JSON_THROW_ON_ERROR) . "\n\n";
+                }
+                flush();
+                return;
+            }
+
+            // Branch C: Premier démarrage du run (ou retry)
             try {
-                $this->runService->execute($id, $config['workflowFile'], $config['brief']);
+                if ($retryCheckpoint) {
+                    cache()->forget("run:{$id}:event_log");
+                    $this->runService->executeFromCheckpoint($id, $retryCheckpoint);
+                } else {
+                    $this->runService->execute($id, $config['workflowFile'], $config['brief']);
+                }
             } catch (\Throwable $e) {
-                // RunService émet RunError pour les erreurs d'agents connues (CliExecutionException,
-                // ProcessTimedOutException, InvalidJsonOutputException) et pose le flag error_emitted.
-                // Ce catch-all ne ré-émet que pour les erreurs inattendues non gérées dans RunService.
                 if (! cache()->has("run:{$id}:error_emitted")) {
                     event(new RunError(
                         runId:          $id,
@@ -82,6 +104,8 @@ class SseController extends Controller
                         checkpointPath: '',
                     ));
                 }
+            } finally {
+                cache()->put("run:{$id}:done", true, 3600);
             }
         }, 200, [
             'Content-Type'      => 'text/event-stream',

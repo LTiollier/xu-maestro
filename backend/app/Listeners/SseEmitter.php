@@ -31,16 +31,18 @@ class SseEmitter
 
     public function handleAgentLogLine(AgentLogLine $event): void
     {
-        $payload = json_encode([
+        $payload = [
             'runId'     => $event->runId,
             'agentId'   => $event->agentId,
             'line'      => $event->line,
             'step'      => $event->step,
             'timestamp' => now()->toIso8601String(),
-        ], JSON_THROW_ON_ERROR);
+        ];
+
+        $this->appendEventToLog($event->runId, 'agent.log_line', $payload);
 
         echo "event: agent.log_line\n";
-        echo "data: {$payload}\n\n";
+        echo "data: " . json_encode($payload, JSON_THROW_ON_ERROR) . "\n\n";
         flush();
     }
 
@@ -91,7 +93,6 @@ class SseEmitter
 
         $this->appendEventToLog($event->runId, 'run.completed', $payload);
 
-        echo "retry: 30000\n";
         echo "event: run.completed\n";
         echo "data: " . json_encode($payload, JSON_THROW_ON_ERROR) . "\n\n";
         flush();
@@ -110,7 +111,6 @@ class SseEmitter
 
         $this->appendEventToLog($event->runId, 'run.error', $payload);
 
-        echo "retry: 30000\n";
         echo "event: run.error\n";
         echo "data: " . json_encode($payload, JSON_THROW_ON_ERROR) . "\n\n";
         flush();
