@@ -17,6 +17,10 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
 # AI CLI tools (Linux binaries – host auth configs mounted via $HOME volume)
 RUN npm install -g @google/gemini-cli @anthropic-ai/claude-code
 
+# RTK-AI (token-optimized CLI proxy – needed because Claude Code hooks rewrite commands via rtk)
+RUN curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/refs/heads/master/install.sh | sh
+ENV PATH="/root/.local/bin:${PATH}"
+
 WORKDIR /app
 
 # Install PHP deps
