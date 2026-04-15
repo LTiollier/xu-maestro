@@ -14,27 +14,37 @@ class LogSseController extends Controller
 
     public function stream(string $id): StreamedResponse
     {
-        $runPath = $this->resolveRunPath($id);
+        // On vérifie si le run est connu (soit déjà lancé, soit en cours d'initialisation)
+        $isKnown = cache()->has("run:{$id}:config") || cache()->has("run:{$id}:path") || cache()->has("run:{$id}");
 
-        if (! $runPath) {
+        if (! $isKnown) {
             abort(404, "Run not found: {$id}");
         }
 
-        return new StreamedResponse(function () use ($id, $runPath) {
+        return new StreamedResponse(function () use ($id) {
             set_time_limit(0);
             ignore_user_abort(true);
             $this->sseStreamService->setHeaders();
 
-            $sessionPath = $runPath . '/session.md';
+            $runPath     = null;
+            $sessionPath = null;
             $offset      = 0;
 
             while (true) {
-                // P2: arrêter si le client a fermé la connexion
+                // Arrêter si le client a fermé la connexion
                 if (connection_aborted()) {
                     break;
                 }
 
-                if (File::exists($sessionPath)) {
+                // Tenter de résoudre le chemin si on ne l'a pas encore
+                if (! $runPath) {
+                    $runPath = $this->resolveRunPath($id);
+                    if ($runPath) {
+                        $sessionPath = $runPath . '/session.md';
+                    }
+                }
+
+                if ($runPath && $sessionPath && File::exists($sessionPath)) {
                     $content = file_get_contents($sessionPath);
                     if ($content !== false) {
                         $chunk = substr($content, $offset);
@@ -53,8 +63,8 @@ class LogSseController extends Controller
                 }
 
                 if (cache()->has("run:{$id}:done")) {
-                    // P1: lecture finale pour capturer les bytes écrits juste avant le flag done
-                    if (File::exists($sessionPath)) {
+                    // Lecture finale pour capturer les bytes écrits juste avant le flag done
+                    if ($sessionPath && File::exists($sessionPath)) {
                         $final = file_get_contents($sessionPath);
                         if ($final !== false) {
                             $tail = substr($final, $offset);
