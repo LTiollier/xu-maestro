@@ -180,6 +180,13 @@
 - **Skip signal non persisté en checkpoint** — Si le process crashe après qu'un agent a émis `skip_next` mais avant que l'agent suivant soit traité, le signal est perdu. Sur reprise depuis checkpoint, l'agent skippable s'exécutera normalement au lieu d'être sauté. Non causé par ce changement (gap architectural pré-existant du CheckpointService). À adresser si la persistance stricte des skip est requise. [RunService.php:executeAgents()]
 - **LLM-controlled skip = surface d'injection de contrôle** — Un LLM compromis ou hallucinating peut émettre `next_action: "skip_next"` pour sauter un agent skippable sans raison légitime. Atténuation existante : seuls les agents explicitement marqués `skippable: true` sont concernés. À documenter dans les guidelines sécurité si le projet expose des workflows à des utilisateurs non-auteurs des YAML. [RunService.php:245-250]
 
+## Deferred from: code review of terminal-output-highlight-user-responses (2026-04-15)
+
+- **`renderAgentContent` non mémoïsé** — Fonction créée à chaque render, appelée sur chaque agent block. Avec `parseLogs()` aussi non mémoïsé, c'est O(n) string work par render (polling toutes les 2s). Acceptable MVP (≤10 agents). À wrapper dans `useMemo` lors d'un refactor performance global de RunSidebar. [RunSidebar.tsx]
+- **Auto-scroll hijack** — `useEffect([logContent, status])` scroll vers le bas à chaque poll 2s, même si l'utilisateur a scrollé manuellement vers le haut. Pré-existant. À corriger avec un flag `userScrolled` ou `IntersectionObserver`. [RunSidebar.tsx]
+- **Délimiteur `---\n## Agent:` sensible aux CRLF** — CRLF Windows casserait silencieusement le split et rendrait zéro agents. Pré-existant. [RunSidebar.tsx:parseLogs]
+- **`index-as-key` dans les renders statiques** — `logAgents.map((_, i) => key={i})` et `lines.map((_, i) => key={i})` dans `renderAgentContent`. Acceptable pour contenu append-only qui ne se réordonne pas. Pré-existant sur `logAgents`. [RunSidebar.tsx]
+
 ## Deferred from: code review of fix-sse-disable-auto-reconnect (2026-04-15)
 
 - **`waiting_for_input` non protégé dans `onerror`** — Si la connexion SSE se coupe pendant qu'un agent est en `waiting_for_input`, `onerror` ne trouve pas d'entrée `working` et appelle uniquement `setRunError`. L'agent reste visuellement en `waiting_for_input` avec la question affichée mais aucun bouton Retry localisé. Comportement sub-optimal mais non cassant (le banner global invite à retry). À adresser en ajoutant `waiting_for_input` à la détection dans `onerror`. [useSSEListener.ts:97]
