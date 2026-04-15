@@ -50,16 +50,8 @@ class SseController extends Controller
                 return;
             }
 
-            // Reconnexion — run encore actif : rejouer les événements passés et indiquer de retenter
+            // Run actif — empêcher une double exécution concurrente
             if (cache()->has("run:{$id}")) {
-                $log = cache()->get("run:{$id}:event_log", []);
-                foreach ($log as $entry) {
-                    echo "event: {$entry['type']}\n";
-                    echo "data: " . json_encode($entry['payload'], JSON_THROW_ON_ERROR) . "\n\n";
-                    flush();
-                }
-                echo "retry: 3000\n\n";
-                flush();
                 return;
             }
 
