@@ -22,5 +22,12 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         JsonResource::withoutWrapping();
+
+        Event::listen(AgentStatusChanged::class,  [SseEmitter::class, 'handleAgentStatusChanged']);
+        Event::listen(AgentLogLine::class,         [SseEmitter::class, 'handleAgentLogLine']);
+        Event::listen(AgentBubble::class,          [SseEmitter::class, 'handleAgentBubble']);
+        Event::listen(AgentWaitingForInput::class, [SseEmitter::class, 'handleAgentWaitingForInput']);
+        Event::listen(RunCompleted::class,         [SseEmitter::class, 'handleRunCompleted']);
+        Event::listen(RunError::class,             [SseEmitter::class, 'handleRunError']);
     }
 }
