@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Services\SseStreamService;
+use Illuminate\Contracts\Filesystem\FileNotFoundException;
 use Illuminate\Support\Facades\File;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -52,8 +53,8 @@ class LogSseController extends Controller
                 }
 
                 if ($runPath && $sessionPath && File::exists($sessionPath)) {
-                    $content = file_get_contents($sessionPath);
-                    if ($content !== false) {
+                    try {
+                        $content = File::get($sessionPath);
                         $chunk = substr($content, $offset);
                         if (strlen($chunk) > 0) {
                             $offset += strlen($chunk);
@@ -66,14 +67,16 @@ class LogSseController extends Controller
                                 // Chunk non-UTF-8 ignoré silencieusement
                             }
                         }
+                    } catch (FileNotFoundException) {
+                        // Fichier supprimé entre le exists() et le get() — on ignore ce tick
                     }
                 }
 
                 if (cache()->has("run:{$id}:done")) {
                     // Lecture finale pour capturer les bytes écrits juste avant le flag done
                     if ($sessionPath && File::exists($sessionPath)) {
-                        $final = file_get_contents($sessionPath);
-                        if ($final !== false) {
+                        try {
+                            $final = File::get($sessionPath);
                             $tail = substr($final, $offset);
                             if (strlen($tail) > 0) {
                                 try {
@@ -84,6 +87,8 @@ class LogSseController extends Controller
                                     // Chunk non-UTF-8 ignoré
                                 }
                             }
+                        } catch (FileNotFoundException) {
+                            // Fichier supprimé entre le exists() et le get() — on ignore
                         }
                     }
                     echo "event: log.done\ndata: {}\n\n";
