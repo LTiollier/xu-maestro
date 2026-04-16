@@ -19,6 +19,9 @@ services:
       PHP_CLI_SERVER_WORKERS: 4
       # Set container HOME = host HOME so CLI tools find their config files
       HOME: ${HOME}
+      # Claude Code OAuth token (generate with: claude setup-token)
+      # macOS stores Claude auth in Keychain, not accessible from Docker
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
     restart: unless-stopped
 
   frontend:

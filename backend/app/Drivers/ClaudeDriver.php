@@ -9,7 +9,7 @@ class ClaudeDriver implements DriverInterface
 {
     public function execute(string $projectPath, string $systemPrompt, string $context, int $timeout, ?callable $onOutput = null): string
     {
-        $command = 'claude -p --allowedTools "Bash,Read,Write,Edit" --output-format stream-json';
+        $command = 'claude -p --verbose --allowedTools "Bash,Read,Write,Edit" --output-format stream-json';
 
         if ($systemPrompt !== '') {
             $command .= ' --append-system-prompt ' . escapeshellarg($systemPrompt);
