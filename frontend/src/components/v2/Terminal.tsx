@@ -20,6 +20,43 @@ const QuestionInteraction = dynamic(
   { ssr: false },
 )
 
+const AgentOutputBlock = React.memo(function AgentOutputBlock({ content }: { content: string }) {
+  if (content.trim().startsWith('{')) {
+    try {
+      const parsed = JSON.parse(content)
+      if (parsed.output) {
+        return <AgentOutputBlock content={parsed.output} />
+      }
+    } catch {
+      // Fallback to raw text if parsing fails
+    }
+  }
+
+  return (
+    <>
+      {content.split('\n').map((line, i) => {
+        if (line.startsWith('**Question :**')) {
+          return (
+            <div key={i} className="flex flex-col gap-2 my-4 p-4 rounded-xl bg-blue-500/10 border border-blue-500/20">
+              <span className="text-[10px] font-bold text-blue-400 uppercase tracking-widest font-mono">Agent Question</span>
+              <span className="text-sm text-blue-100">{line.replace('**Question :**', '').trim()}</span>
+            </div>
+          )
+        }
+        if (line.startsWith('**Réponse utilisateur :**')) {
+          return (
+            <div key={i} className="flex flex-col gap-2 my-4 p-4 rounded-xl bg-violet-500/10 border border-violet-500/20 items-end">
+              <span className="text-[10px] font-bold text-violet-400 uppercase tracking-widest font-mono">Your Response</span>
+              <span className="text-sm text-violet-100 italic">{line.replace('**Réponse utilisateur :**', '').trim()}</span>
+            </div>
+          )
+        }
+        return line ? <div key={i}>{line}</div> : <div key={i} className="h-2" />
+      })}
+    </>
+  )
+})
+
 export function Terminal() {
   const { runId, status, retryKey, setRunId, resetRun, setRetrying, duration, runFolder, errorMessage } = useRunStore()
   const { selectedWorkflow } = useWorkflowStore()
@@ -132,50 +169,14 @@ export function Terminal() {
     }
   }
 
-  const parseLogs = () => {
+  const logAgents = useMemo(() => {
     if (!logContent) return []
     const parts = logContent.split('---\n## Agent:')
     return parts.slice(1).map(p => {
       const [nameLine, ...rest] = p.split('\n')
       return { name: nameLine.trim(), output: rest.join('\n').trim() }
     })
-  }
-
-  const logAgents = parseLogs()
-
-  const renderContent = (content: string) => {
-    // Try to parse as JSON if it looks like it
-    if (content.trim().startsWith('{')) {
-      try {
-        const parsed = JSON.parse(content)
-        if (parsed.output) {
-          return renderContent(parsed.output)
-        }
-      } catch {
-        // Fallback to raw text if parsing fails
-      }
-    }
-
-    return content.split('\n').map((line, i) => {
-      if (line.startsWith('**Question :**')) {
-        return (
-          <div key={i} className="flex flex-col gap-2 my-4 p-4 rounded-xl bg-blue-500/10 border border-blue-500/20">
-            <span className="text-[10px] font-bold text-blue-400 uppercase tracking-widest font-mono">Agent Question</span>
-            <span className="text-sm text-blue-100">{line.replace('**Question :**', '').trim()}</span>
-          </div>
-        )
-      }
-      if (line.startsWith('**Réponse utilisateur :**')) {
-        return (
-          <div key={i} className="flex flex-col gap-2 my-4 p-4 rounded-xl bg-violet-500/10 border border-violet-500/20 items-end">
-            <span className="text-[10px] font-bold text-violet-400 uppercase tracking-widest font-mono">Your Response</span>
-            <span className="text-sm text-violet-100 italic">{line.replace('**Réponse utilisateur :**', '').trim()}</span>
-          </div>
-        )
-      }
-      return line ? <div key={i}>{line}</div> : <div key={i} className="h-2" />
-    })
-  }
+  }, [logContent])
 
   return (
     <div className="flex-1 flex flex-col bg-black min-w-0 overflow-hidden">
@@ -243,7 +244,7 @@ export function Terminal() {
                   <div className="h-px flex-1 bg-zinc-900" />
                 </div>
                 <div className="text-zinc-300 leading-relaxed whitespace-pre-wrap pl-4 border-l border-zinc-800">
-                  {renderContent(agent.output)}
+                  <AgentOutputBlock content={agent.output} />
                 </div>
               </div>
             ))
