@@ -1,5 +1,3 @@
-'use client'
-
 import { Sidebar } from '@/components/v2/Sidebar'
 import { Terminal } from '@/components/v2/Terminal'
 import { ErrorBoundary } from '@/components/ErrorBoundary'

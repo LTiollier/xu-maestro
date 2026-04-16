@@ -170,7 +170,11 @@ export function useSSEListener(
       }
     }
 
-    const timeoutId = setTimeout(setupEventSource, 100)
+    // Small delay so the backend SSE handler is registered before the client connects.
+    // Without it, the EventSource request can arrive before the run's event stream is ready,
+    // causing an immediate onerror and a needless reconnect cycle.
+    const SSE_CONNECT_DELAY_MS = 100
+    const timeoutId = setTimeout(setupEventSource, SSE_CONNECT_DELAY_MS)
 
     return () => {
       destroyed = true

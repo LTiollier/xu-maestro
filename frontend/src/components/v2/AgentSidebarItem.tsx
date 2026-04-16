@@ -9,7 +9,6 @@ interface AgentSidebarItemProps {
   id: string
   engine: string
   status: 'idle' | 'working' | 'done' | 'error' | 'skipped' | 'waiting_for_input'
-  isCurrent?: boolean
 }
 
 export const AgentSidebarItem = React.memo(function AgentSidebarItem({ id, engine, status }: AgentSidebarItemProps) {
