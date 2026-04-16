@@ -2,10 +2,17 @@
 
 namespace App\Services;
 
+use App\Support\SanitizesEnvCredentials;
 use Illuminate\Support\Facades\File;
 
 class ArtifactService
 {
+    use SanitizesEnvCredentials;
+
+    public function __construct(
+        private readonly CheckpointService $checkpointService,
+    ) {}
+
     /**
      * Initialise le dossier run et crée les artefacts initiaux.
      *
@@ -27,7 +34,7 @@ class ArtifactService
         // Sanitiser les credentials avant écriture (NFR12)
         File::put($runPath . '/session.md', $this->sanitizeEnvCredentials($header));
 
-        $this->writeCheckpoint($runPath, [
+        $this->checkpointService->write($runPath, [
             'runId'           => $runId,
             'workflowFile'    => $workflowFile,
             'brief'           => $brief,
@@ -53,18 +60,6 @@ class ArtifactService
         File::append($runPath . '/session.md', $section);
 
         File::put($runPath . '/agents/' . $agentId . '.md', $sanitized);
-    }
-
-    /**
-     * Écrit checkpoint.json avec les données fournies.
-     *
-     * Sanitise les credentials avant écriture (NFR12).
-     */
-    public function writeCheckpoint(string $runPath, array $data): void
-    {
-        $json      = json_encode($data, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR);
-        $sanitized = $this->sanitizeEnvCredentials($json);
-        File::put($runPath . '/checkpoint.json', $sanitized);
     }
 
     /**
@@ -97,25 +92,4 @@ class ArtifactService
         return File::get($runPath . '/session.md');
     }
 
-    /**
-     * Redacte les valeurs des variables d'environnement qui ressemblent à des credentials (NFR12).
-     *
-     * Règle : strlen($value) >= 8 ET le nom de la variable contient key|token|secret|password|credential|api.
-     */
-    private function sanitizeEnvCredentials(string $content): string
-    {
-        $env = array_merge($_ENV, getenv() ?: []);
-
-        foreach ($env as $key => $value) {
-            $value = (string) $value;
-            if (
-                strlen($value) >= 8
-                && preg_match('/key|token|secret|password|credential|api/i', (string) $key)
-            ) {
-                $content = str_replace($value, '[REDACTED]', $content);
-            }
-        }
-
-        return $content;
-    }
 }

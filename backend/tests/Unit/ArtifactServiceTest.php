@@ -3,6 +3,7 @@
 namespace Tests\Unit;
 
 use App\Services\ArtifactService;
+use App\Services\CheckpointService;
 use Illuminate\Support\Facades\File;
 use Tests\TestCase;
 
@@ -16,7 +17,7 @@ class ArtifactServiceTest extends TestCase
         parent::setUp();
         $this->tmpBase = sys_get_temp_dir() . '/artifact-test-' . uniqid();
         config(['xu-workflow.runs_path' => $this->tmpBase]);
-        $this->service = new ArtifactService();
+        $this->service = new ArtifactService(new CheckpointService());
     }
 
     protected function tearDown(): void
@@ -122,28 +123,6 @@ class ArtifactServiceTest extends TestCase
 
         $this->assertFileExists($runPath . '/agents/pm-agent.md');
         $this->assertStringContainsString('agent output content', file_get_contents($runPath . '/agents/pm-agent.md'));
-    }
-
-    // ── writeCheckpoint ───────────────────────────────────────────────────────
-
-    public function test_write_checkpoint_creates_valid_json(): void
-    {
-        $runPath = $this->service->initializeRun('run-uuid', 'example.yaml', 'Brief');
-        $data = [
-            'runId'           => 'run-uuid',
-            'workflowFile'    => 'example.yaml',
-            'brief'           => 'Brief',
-            'completedAgents' => ['pm'],
-            'currentAgent'    => 'dev',
-            'currentStep'     => 0,
-            'context'         => $runPath . '/session.md',
-        ];
-
-        $this->service->writeCheckpoint($runPath, $data);
-
-        $checkpoint = json_decode(file_get_contents($runPath . '/checkpoint.json'), true);
-        $this->assertEquals(['pm'], $checkpoint['completedAgents']);
-        $this->assertEquals('dev', $checkpoint['currentAgent']);
     }
 
     // ── getContextContent ─────────────────────────────────────────────────────
