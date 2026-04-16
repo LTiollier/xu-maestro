@@ -28,10 +28,10 @@ class YamlService
                     $data['file'] = basename($filePath);
                     $workflows[] = $data;
                 }
-            } catch (ParseException) {
-                // YAML malformé — exclure silencieusement
-            } catch (\Throwable) {
-                // Fichier illisible (permission denied, etc.) — exclure silencieusement
+            } catch (ParseException $e) {
+                logger()->warning("YAML malformé ignoré : {$filePath}", ['error' => $e->getMessage()]);
+            } catch (\Throwable $e) {
+                logger()->warning("Workflow illisible ignoré : {$filePath}", ['error' => $e->getMessage()]);
             }
         }
 

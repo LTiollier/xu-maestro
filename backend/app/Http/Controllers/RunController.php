@@ -183,7 +183,7 @@ class RunController extends Controller
                 'runId'   => $id,
                 'agentId' => $validated['agentId'],
                 'status'  => 'already_answered',
-            ], 200);
+            ], 409);
         }
 
         cache()->put($cacheKey, $validated['answer'], 3600);
