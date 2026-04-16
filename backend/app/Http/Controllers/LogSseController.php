@@ -103,32 +103,6 @@ class LogSseController extends Controller
 
     private function resolveRunPath(string $id): ?string
     {
-        $runPath = cache()->get("run:{$id}:path");
-
-        if ($runPath) {
-            return $runPath;
-        }
-
-        $runsPath = config('xu-workflow.runs_path');
-        if (! File::exists($runsPath)) {
-            return null;
-        }
-
-        foreach (File::directories($runsPath) as $dir) {
-            $checkpointPath = $dir . '/checkpoint.json';
-            if (! File::exists($checkpointPath)) {
-                continue;
-            }
-            try {
-                $checkpoint = json_decode(File::get($checkpointPath), true, 512, JSON_THROW_ON_ERROR);
-                if (($checkpoint['runId'] ?? null) === $id) {
-                    return $dir;
-                }
-            } catch (\Throwable) {
-                continue;
-            }
-        }
-
-        return null;
+        return cache()->get("run:{$id}:path") ?: null;
     }
 }
