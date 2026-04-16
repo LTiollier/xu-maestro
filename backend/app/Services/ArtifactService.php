@@ -14,7 +14,7 @@ class ArtifactService
      */
     public function initializeRun(string $runId, string $workflowFile, string $brief): string
     {
-        $folderName = now()->format('Y-m-d-His');
+        $folderName = now()->format('Y-m-d-His') . '-' . substr($runId, 0, 8);
         $runPath    = config('xu-workflow.runs_path') . '/' . $folderName;
 
         File::makeDirectory($runPath . '/agents', 0755, true, true);
