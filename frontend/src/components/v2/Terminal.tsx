@@ -1,15 +1,24 @@
 'use client'
 
 import React, { useEffect, useMemo, useRef, useState } from 'react'
+import dynamic from 'next/dynamic'
 import { useRunStore } from '@/stores/runStore'
 import { useAgentStatusStore } from '@/stores/agentStatusStore'
 import { useSSEListener } from '@/hooks/useSSEListener'
-import { Terminal as TerminalIcon, CheckCircle2, AlertCircle, Play, Square, History, Loader2, Send, MessageSquare } from 'lucide-react'
+import { Terminal as TerminalIcon, CheckCircle2, AlertCircle, Play, Square, History, Loader2, MessageSquare } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { useWorkflowStore } from '@/stores/workflowStore'
-import { RunHistory } from '@/components/RunHistory'
-import { cn } from '@/lib/utils'
+
+const RunHistory = dynamic(
+  () => import('@/components/RunHistory').then(m => ({ default: m.RunHistory })),
+  { ssr: false },
+)
+
+const QuestionInteraction = dynamic(
+  () => import('@/components/v2/QuestionInteraction'),
+  { ssr: false },
+)
 
 export function Terminal() {
   const { runId, status, retryKey, setRunId, resetRun, setRetrying, duration, runFolder, errorMessage } = useRunStore()
@@ -268,45 +277,15 @@ export function Terminal() {
           })}
 
           {/* Interaction Area: Question from Agent */}
-          {waitingAgent && (
-            <div className="flex flex-col gap-4">
-              <div className="flex items-center gap-3 mb-1">
-                <span className="text-amber-500 font-bold">[{waitingAgentId}]</span>
-                <div className="h-px flex-1 bg-zinc-900" />
-                <MessageSquare className="w-3 h-3 text-amber-500 animate-pulse" />
-              </div>
-              <div className="pl-4 border-l border-amber-500/30 flex flex-col gap-4">
-                <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20">
-                  <span className="text-[10px] font-bold text-amber-400 uppercase tracking-widest font-mono block mb-2">Agent Question</span>
-                  <div className="text-sm text-amber-100 leading-relaxed whitespace-pre-wrap">
-                    {waitingAgent.question}
-                  </div>
-                </div>
-
-                <div className="relative group">
-                  <Textarea
-                    value={answer}
-                    onChange={(e) => setAnswer(e.target.value)}
-                    placeholder="Tape ta réponse ici..."
-                    className="w-full bg-zinc-900/50 border-zinc-800 focus:border-amber-500/50 focus:ring-0 text-zinc-200 resize-none h-24 p-4 rounded-xl font-sans text-sm"
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault()
-                        handleSendAnswer()
-                      }
-                    }}
-                  />
-                  <Button
-                    size="icon"
-                    onClick={handleSendAnswer}
-                    disabled={!answer.trim() || isAnswering}
-                    className="absolute bottom-3 right-3 h-10 w-10 rounded-lg bg-amber-600 hover:bg-amber-500 text-white shadow-lg shadow-amber-900/20"
-                  >
-                    {isAnswering ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                  </Button>
-                </div>
-              </div>
-            </div>
+          {waitingAgent && waitingAgentId && (
+            <QuestionInteraction
+              agentId={waitingAgentId}
+              question={waitingAgent.question}
+              answer={answer}
+              isAnswering={isAnswering}
+              onAnswerChange={setAnswer}
+              onSend={handleSendAnswer}
+            />
           )}
 
           {/* Global Error Banner and Retry */}

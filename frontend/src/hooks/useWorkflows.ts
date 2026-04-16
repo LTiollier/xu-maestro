@@ -5,7 +5,7 @@ import { useWorkflowStore } from '@/stores/workflowStore'
 import type { Workflow } from '@/types/workflow.types'
 
 export function useWorkflows() {
-  const { setWorkflows, setIsLoading, setError } = useWorkflowStore()
+  const { setWorkflows, setIsLoading, setError, initialized, setInitialized } = useWorkflowStore()
 
   const fetchWorkflows = useCallback(async (signal?: AbortSignal) => {
     setIsLoading(true)
@@ -29,10 +29,14 @@ export function useWorkflows() {
   }, [setWorkflows, setIsLoading, setError])
 
   useEffect(() => {
+    // Garantit un seul fetch automatique quel que soit le nombre de composants
+    // qui appellent useWorkflows() simultanément
+    if (initialized) return
+    setInitialized(true)
     const controller = new AbortController()
     fetchWorkflows(controller.signal)
     return () => { controller.abort() }
-  }, [fetchWorkflows])
+  }, [initialized, setInitialized, fetchWorkflows])
 
   return { reload: () => fetchWorkflows() }
 }

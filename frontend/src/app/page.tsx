@@ -2,12 +2,8 @@
 
 import { Sidebar } from '@/components/v2/Sidebar'
 import { Terminal } from '@/components/v2/Terminal'
-import { useWorkflows } from '@/hooks/useWorkflows'
 
 export default function Home() {
-  // Charge les workflows au montage
-  useWorkflows()
-
   return (
     <div className="flex h-screen overflow-hidden bg-black text-zinc-100 font-sans selection:bg-blue-500/30">
       {/* Panneau de Gauche : L'Équipe / Pipeline */}
