@@ -219,6 +219,7 @@ class RunService
                             continue;
                         }
                         $msg = $e->getMessage();
+                        logger()->error('Agent CLI execution failed', ['runId' => $runId, 'agentId' => $agentId, 'step' => $stepIndex, 'error' => $msg]);
                         event(new AgentStatusChanged($runId, $agentId, 'error', $stepIndex, $msg));
                         event(new RunError(
                             runId:          $runId,
@@ -237,6 +238,7 @@ class RunService
                             continue;
                         }
                         $msg = "Timeout after {$timeout}s";
+                        logger()->error('Agent timed out', ['runId' => $runId, 'agentId' => $agentId, 'step' => $stepIndex, 'timeout' => $timeout]);
                         event(new AgentStatusChanged($runId, $agentId, 'error', $stepIndex, $msg));
                         event(new RunError(
                             runId:          $runId,
@@ -255,6 +257,7 @@ class RunService
                             continue;
                         }
                         $msg = "Invalid JSON output from {$agentId}: {$e->getMessage()}";
+                        logger()->error('Agent invalid JSON output', ['runId' => $runId, 'agentId' => $agentId, 'step' => $stepIndex, 'error' => $e->getMessage()]);
                         event(new AgentStatusChanged($runId, $agentId, 'error', $stepIndex, $msg));
                         event(new RunError(
                             runId:          $runId,
@@ -303,6 +306,7 @@ class RunService
 
                     if ($answer === null) {
                         $msg = "Délai de réponse dépassé pour l'agent {$agentId}";
+                        logger()->error('User input timeout', ['runId' => $runId, 'agentId' => $agentId, 'step' => $stepIndex]);
                         event(new AgentStatusChanged($runId, $agentId, 'error', $stepIndex, $msg));
                         event(new RunError(
                             runId:          $runId,
@@ -431,6 +435,7 @@ class RunService
                     if ($subIsMandatory) {
                         throw $e;
                     }
+                    logger()->warning('Non-mandatory sub-agent failed', ['runId' => $runId, 'agentId' => $prefixedId, 'error' => $e->getMessage()]);
                     // Non-mandatory sub-agent failure is tolerated
                     continue;
                 }
@@ -441,6 +446,7 @@ class RunService
             throw $e;
         } catch (\Throwable $e) {
             $msg = $e->getMessage();
+            logger()->error('Sub-workflow node failed', ['runId' => $runId, 'nodeId' => $nodeId, 'step' => $stepIndex, 'error' => $msg]);
             event(new AgentStatusChanged($runId, $nodeId, 'error', $stepIndex, $msg));
             event(new RunError(
                 runId:          $runId,
