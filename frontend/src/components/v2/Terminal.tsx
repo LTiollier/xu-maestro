@@ -41,14 +41,16 @@ export function Terminal() {
   // Update browser tab title based on run status
   useEffect(() => {
     const total = selectedWorkflow?.agents.length ?? 0
-    const workingCount = Object.values(agentStatuses).filter(a => a.status === 'working').length
+    const progressCount = Object.values(agentStatuses).filter(a => 
+      ['working', 'done', 'skipped', 'waiting_for_input'].includes(a.status)
+    ).length
     const hasQuestion = Object.values(agentStatuses).some(a => a.status === 'waiting_for_input')
 
     let title = 'xu-workflow'
     if (status === 'running' && hasQuestion) {
       title = '🟡 xu-workflow'
     } else if (status === 'running') {
-      title = `🟢 ${workingCount}/${total} · xu-workflow`
+      title = `🟢 ${progressCount}/${total} · xu-workflow`
     } else if (status === 'error') {
       title = '🔴 xu-workflow'
     } else if (status === 'completed') {
