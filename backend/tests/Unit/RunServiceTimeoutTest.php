@@ -8,9 +8,12 @@ use App\Drivers\DriverInterface;
 use App\Drivers\DriverResolver;
 use App\Exceptions\AgentTimeoutException;
 use App\Exceptions\RunCancelledException;
+use App\Services\AgentContextBuilder;
 use App\Services\ArtifactService;
 use App\Services\CheckpointService;
+use App\Services\JsonOutputValidator;
 use App\Services\RunService;
+use App\Services\SubWorkflowExecutor;
 use App\Services\YamlService;
 use Illuminate\Contracts\Process\ProcessResult;
 use Illuminate\Process\Exceptions\ProcessTimedOutException;
@@ -46,7 +49,11 @@ class RunServiceTimeoutTest extends TestCase
         $this->mockArtifact->method('initializeRun')->willReturn('/tmp/test-run');
         $this->mockArtifact->method('getContextContent')->willReturn('# context');
 
-        $this->service = new RunService($this->mockResolver, $this->mockYaml, $this->mockArtifact, $this->mockCheckpoint);
+        $contextBuilder      = new AgentContextBuilder();
+        $jsonValidator       = new JsonOutputValidator();
+        $subWorkflowExecutor = new SubWorkflowExecutor($this->mockResolver, $this->mockYaml, $this->mockArtifact, $contextBuilder, $jsonValidator);
+
+        $this->service = new RunService($this->mockResolver, $this->mockYaml, $this->mockArtifact, $this->mockCheckpoint, $contextBuilder, $jsonValidator, $subWorkflowExecutor);
     }
 
     private function validOutput(): string

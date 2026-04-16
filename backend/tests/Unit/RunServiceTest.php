@@ -10,9 +10,12 @@ use App\Events\AgentBubble;
 use App\Events\AgentStatusChanged;
 use App\Events\RunCompleted;
 use App\Exceptions\InvalidJsonOutputException;
+use App\Services\AgentContextBuilder;
 use App\Services\ArtifactService;
 use App\Services\CheckpointService;
+use App\Services\JsonOutputValidator;
 use App\Services\RunService;
+use App\Services\SubWorkflowExecutor;
 use App\Services\YamlService;
 use Illuminate\Support\Facades\Event;
 use PHPUnit\Framework\Attributes\Test;
@@ -43,7 +46,11 @@ class RunServiceTest extends TestCase
         $this->mockArtifact->method('initializeRun')->willReturn('/tmp/test-run');
         $this->mockArtifact->method('getContextContent')->willReturn('# context from session.md');
 
-        $this->service = new RunService($this->mockResolver, $this->mockYaml, $this->mockArtifact, $this->mockCheckpoint);
+        $contextBuilder      = new AgentContextBuilder();
+        $jsonValidator       = new JsonOutputValidator();
+        $subWorkflowExecutor = new SubWorkflowExecutor($this->mockResolver, $this->mockYaml, $this->mockArtifact, $contextBuilder, $jsonValidator);
+
+        $this->service = new RunService($this->mockResolver, $this->mockYaml, $this->mockArtifact, $this->mockCheckpoint, $contextBuilder, $jsonValidator, $subWorkflowExecutor);
     }
 
     private function validOutput(string $step = 'analyse', string $status = 'done'): string
@@ -187,10 +194,13 @@ class RunServiceTest extends TestCase
                 '# session content after agent-2'
             );
 
-        $mockCheckpoint = $this->createMock(CheckpointService::class);
-        $resolver       = $this->createMock(DriverResolver::class);
+        $mockCheckpoint      = $this->createMock(CheckpointService::class);
+        $resolver            = $this->createMock(DriverResolver::class);
         $resolver->method('for')->willReturn($driver);
-        $service        = new RunService($resolver, $yaml, $mockArtifact, $mockCheckpoint);
+        $contextBuilder      = new AgentContextBuilder();
+        $jsonValidator       = new JsonOutputValidator();
+        $subWorkflowExecutor = new SubWorkflowExecutor($resolver, $yaml, $mockArtifact, $contextBuilder, $jsonValidator);
+        $service             = new RunService($resolver, $yaml, $mockArtifact, $mockCheckpoint, $contextBuilder, $jsonValidator, $subWorkflowExecutor);
         $service->execute('test-run-id', 'multi.yaml', 'brief');
 
         $this->assertStringContainsString('# initial session content', $calls[0]);

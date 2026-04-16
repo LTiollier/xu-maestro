@@ -12,9 +12,12 @@ use App\Events\RunCompleted;
 use App\Events\RunError;
 use App\Exceptions\CliExecutionException;
 use App\Exceptions\RunCancelledException;
+use App\Services\AgentContextBuilder;
 use App\Services\ArtifactService;
 use App\Services\CheckpointService;
+use App\Services\JsonOutputValidator;
 use App\Services\RunService;
+use App\Services\SubWorkflowExecutor;
 use App\Services\YamlService;
 use Illuminate\Support\Facades\Event;
 use PHPUnit\Framework\Attributes\Test;
@@ -44,8 +47,13 @@ class RunServiceRetryFromCheckpointTest extends TestCase
 
         $this->mockArtifact->method('getContextContent')->willReturn('# context');
 
+        $contextBuilder      = new AgentContextBuilder();
+        $jsonValidator       = new JsonOutputValidator();
+        $subWorkflowExecutor = new SubWorkflowExecutor($this->mockResolver, $this->mockYaml, $this->mockArtifact, $contextBuilder, $jsonValidator);
+
         $this->service = new RunService(
-            $this->mockResolver, $this->mockYaml, $this->mockArtifact, $this->mockCheckpoint
+            $this->mockResolver, $this->mockYaml, $this->mockArtifact, $this->mockCheckpoint,
+            $contextBuilder, $jsonValidator, $subWorkflowExecutor
         );
     }
 

@@ -24,6 +24,9 @@ class RunService
         private readonly YamlService $yamlService,
         private readonly ArtifactService $artifactService,
         private readonly CheckpointService $checkpointService,
+        private readonly AgentContextBuilder $contextBuilder,
+        private readonly JsonOutputValidator $jsonValidator,
+        private readonly SubWorkflowExecutor $subWorkflowExecutor,
     ) {}
 
     public function execute(string $runId, string $workflowFile, string $brief): void
@@ -139,8 +142,8 @@ class RunService
 
             // Handle sub-workflow nodes inline
             if ($agent['engine'] === 'sub-workflow') {
-                $this->executeSubWorkflowNode(
-                    $runId, $agent, $runPath, $brief, $stepIndex,
+                $this->subWorkflowExecutor->execute(
+                    $runId, $agent, $runPath, $stepIndex,
                     $completedAgents, $agentResults, $startedAt
                 );
                 $completedAgents[] = $agentId;
@@ -156,7 +159,7 @@ class RunService
                 ? $agent['timeout']
                 : (int) (config('xu-workflow.default_timeout') ?? 120);
 
-            $systemPrompt    = $this->resolveSystemPrompt($agent);
+            $systemPrompt    = $this->contextBuilder->resolveSystemPrompt($agent);
             $nextAgent       = $workflow['agents'][$stepIndex + 1] ?? null;
             $nextIsSkippable = isset($nextAgent['skippable']) && $nextAgent['skippable'] === true;
 
@@ -206,11 +209,11 @@ class RunService
                         $rawOutput = $driver->execute(
                             $workflow['project_path'],
                             $systemPrompt,
-                            $this->buildAgentContext($context . $additionalContext, $agent, $nextIsSkippable),
+                            $this->contextBuilder->build($context . $additionalContext, $agent, $nextIsSkippable),
                             $timeout,
                             $logCallback
                         );
-                        $decoded = $this->validateJsonOutput($agentId, $rawOutput);
+                        $decoded = $this->jsonValidator->validate($agentId, $rawOutput);
                         break; // succès — sortir de la boucle retry
                     } catch (CliExecutionException $e) {
                         if ($attempt <= $maxRetries) {
@@ -375,186 +378,5 @@ class RunService
         $duration = (int) round((microtime(true) - $startedAt) * 1000);
         $this->artifactService->finalizeRun($runPath, 'completed', $duration, count($agentResults));
         event(new RunCompleted($runId, $duration, count($agentResults), 'completed', $runPath));
-    }
-
-    private function executeSubWorkflowNode(
-        string $runId,
-        array  $nodeAgent,
-        string $runPath,
-        string $brief,
-        int    $stepIndex,
-        array  &$completedAgents,
-        array  &$agentResults,
-        float  $startedAt,
-    ): void {
-        $nodeId = $nodeAgent['id'];
-
-        // Emit working on the sub-workflow node itself
-        event(new AgentStatusChanged($runId, $nodeId, 'working', $stepIndex, ''));
-
-        try {
-            $subWorkflow = $this->yamlService->load($nodeAgent['workflow_file']);
-
-            // Guard against recursive nesting — halt gracefully
-            foreach ($subWorkflow['agents'] as $subAgent) {
-                if (isset($subAgent['engine']) && $subAgent['engine'] === 'sub-workflow') {
-                    throw new \RuntimeException("Recursive sub-workflow nesting is not supported (node: {$nodeId})");
-                }
-            }
-
-            foreach ($subWorkflow['agents'] as $subAgent) {
-                if (cache()->get("run:{$runId}:cancelled", false)) {
-                    throw new RunCancelledException($runId);
-                }
-
-                $prefixedId = $nodeId . '--' . $subAgent['id'];
-
-                // Sub-agent timeout
-                $timeout = isset($subAgent['timeout']) && is_int($subAgent['timeout']) && $subAgent['timeout'] > 0
-                    ? $subAgent['timeout']
-                    : (int) (config('xu-workflow.default_timeout') ?? 120);
-
-                $subIsMandatory = isset($subAgent['mandatory']) && $subAgent['mandatory'] === true;
-
-                $systemPrompt = $this->resolveSystemPrompt($subAgent);
-                $context      = $this->artifactService->getContextContent($runPath);
-
-                $driver    = $this->driverResolver->for($subAgent['engine']);
-                $rawOutput = $driver->execute(
-                    $subWorkflow['project_path'],
-                    $systemPrompt,
-                    $this->buildAgentContext($context, $subAgent),
-                    $timeout
-                );
-
-                $this->artifactService->appendAgentOutput($runPath, $prefixedId, $rawOutput);
-
-                try {
-                    $this->validateJsonOutput($prefixedId, $rawOutput);
-                } catch (\Throwable $e) {
-                    if ($subIsMandatory) {
-                        throw $e;
-                    }
-                    logger()->warning('Non-mandatory sub-agent failed', ['runId' => $runId, 'agentId' => $prefixedId, 'error' => $e->getMessage()]);
-                    // Non-mandatory sub-agent failure is tolerated
-                    continue;
-                }
-            }
-
-            event(new AgentStatusChanged($runId, $nodeId, 'done', $stepIndex, ''));
-        } catch (RunCancelledException $e) {
-            throw $e;
-        } catch (\Throwable $e) {
-            $msg = $e->getMessage();
-            logger()->error('Sub-workflow node failed', ['runId' => $runId, 'nodeId' => $nodeId, 'step' => $stepIndex, 'error' => $msg]);
-            event(new AgentStatusChanged($runId, $nodeId, 'error', $stepIndex, $msg));
-            event(new RunError(
-                runId:          $runId,
-                agentId:        $nodeId,
-                step:           $stepIndex,
-                message:        $msg,
-                checkpointPath: $runPath . '/checkpoint.json',
-            ));
-            cache()->put("run:{$runId}:error_emitted", true, 60);
-            $this->artifactService->finalizeRun($runPath, 'error', (int) round((microtime(true) - $startedAt) * 1000), count($completedAgents));
-            throw $e;
-        }
-    }
-
-    private function validateJsonOutput(string $agentId, string $rawOutput): array
-    {
-        $decoded = json_decode(trim($rawOutput), true);
-
-        if ($decoded === null || ! is_array($decoded)) {
-            // Tentative d'extraction si du texte de narration pollue la sortie (ex: narration de tool use)
-            // On cherche l'objet JSON le plus probable dans la chaîne (balancé en { })
-            // Regex récursive pour les accolades balancées
-            $regex = '/\{(?:[^{}]|(?R))*\}/s';
-            if (preg_match_all($regex, $rawOutput, $matches)) {
-                // On teste les candidats en partant de la fin (car l'agent répond souvent JSON à la fin)
-                foreach (array_reverse($matches[0]) as $candidate) {
-                    $test = json_decode($candidate, true);
-                    if ($test !== null && is_array($test)) {
-                        $decoded = $test;
-                        break;
-                    }
-                }
-            }
-        }
-
-        if ($decoded === null || ! is_array($decoded)) {
-            throw new InvalidJsonOutputException($agentId, $rawOutput, 'Not valid JSON object');
-        }
-
-        $required = ['step', 'status', 'output', 'next_action', 'errors'];
-        foreach ($required as $field) {
-            if (! array_key_exists($field, $decoded)) {
-                throw new InvalidJsonOutputException($agentId, $rawOutput, "Missing field: {$field}");
-            }
-        }
-
-        if ($decoded['status'] === 'waiting_for_input') {
-            // Fallback : certains modèles mettent la question dans "output" plutôt que "question"
-            if ((! isset($decoded['question']) || $decoded['question'] === '')
-                && isset($decoded['output']) && is_string($decoded['output']) && $decoded['output'] !== '') {
-                $decoded['question'] = $decoded['output'];
-            }
-            if (! isset($decoded['question']) || ! is_string($decoded['question']) || $decoded['question'] === '') {
-                throw new InvalidJsonOutputException($agentId, $rawOutput, "Missing field: question must be a non-empty string (required when status is waiting_for_input)");
-            }
-        }
-
-        return $decoded;
-    }
-
-    private function buildAgentContext(string $context, array $agent, bool $nextIsSkippable = false): string
-    {
-        $steps = $agent['steps'] ?? [];
-
-        $result = $context;
-
-        if (! empty($steps)) {
-            $result .= "\n\n---\n## Task\n";
-            foreach ($steps as $step) {
-                $result .= "- {$step}\n";
-            }
-        }
-
-        $isInteractive = isset($agent['interactive']) && $agent['interactive'] === true;
-
-        $result .= "\n\n---\n## Required output format\n"
-            . "Respond with ONLY this JSON object — no markdown, no code block, no extra text:\n"
-            . '{"step": "<brief description of what you did>", "status": "done", "output": "<your full response>", "next_action": null, "errors": []}';
-
-        if ($nextIsSkippable) {
-            $result .= "\n\nNote: set \"next_action\" to \"skip_next\" if you determine the next agent is not needed for this request.";
-        }
-
-        if ($isInteractive) {
-            $result .= "\n\nIf you need clarification from the user before proceeding, use this format instead — execution will pause until the user answers:\n"
-                . '{"step": "Asking user for clarification", "status": "waiting_for_input", "question": "<Write your question here — this exact text will be shown to the user>", "output": "", "next_action": null, "errors": []}' . "\n"
-                . 'IMPORTANT: Put your question text in the "question" field, not in "output".';
-        }
-
-        return $result;
-    }
-
-    private function resolveSystemPrompt(array $agent): string
-    {
-        if (isset($agent['system_prompt']) && $agent['system_prompt'] !== '') {
-            return $agent['system_prompt'];
-        }
-
-        if (isset($agent['system_prompt_file']) && $agent['system_prompt_file'] !== '') {
-            $path = config('xu-workflow.prompts_path') . '/' . basename($agent['system_prompt_file']);
-            if (file_exists($path)) {
-                $content = file_get_contents($path);
-                if ($content !== false) {
-                    return $content;
-                }
-            }
-        }
-
-        return '';
     }
 }
