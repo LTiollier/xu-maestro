@@ -4,21 +4,32 @@ import React from 'react'
 import { useWorkflowStore } from '@/stores/workflowStore'
 import { useAgentStatusStore } from '@/stores/agentStatusStore'
 import { AgentSidebarItem } from './AgentSidebarItem'
-import { 
-  Select, 
-  SelectContent, 
-  SelectItem, 
-  SelectTrigger, 
-  SelectValue 
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
 } from '@/components/ui/select'
 import { Layers, Users, RefreshCw, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useWorkflows } from '@/hooks/useWorkflows'
+import type { AgentStatus } from '@/types/run.types'
+
+const AgentSidebarItemConnected = React.memo(function AgentSidebarItemConnected({
+  agentId,
+  engine,
+}: {
+  agentId: string
+  engine: string
+}) {
+  const status = useAgentStatusStore((s): AgentStatus => s.agents[agentId]?.status ?? 'idle')
+  return <AgentSidebarItem id={agentId} engine={engine} status={status} />
+})
 
 export function Sidebar() {
   const { workflows, selectedWorkflow, setSelectedWorkflow, isLoading } = useWorkflowStore()
   const { reload } = useWorkflows()
-  const agentStatuses = useAgentStatusStore((s) => s.agents)
 
   const handleSelect = (file: string | null) => {
     if (!file) {
@@ -79,12 +90,7 @@ export function Sidebar() {
               </span>
             </div>
             {selectedWorkflow.agents.map((agent) => (
-              <AgentSidebarItem
-                key={agent.id}
-                id={agent.id}
-                engine={agent.engine}
-                status={(agentStatuses[agent.id]?.status as any) || 'idle'}
-              />
+              <AgentSidebarItemConnected key={agent.id} agentId={agent.id} engine={agent.engine} />
             ))}
           </>
         ) : (

@@ -12,7 +12,7 @@ interface AgentSidebarItemProps {
   isCurrent?: boolean
 }
 
-export function AgentSidebarItem({ id, engine, status, isCurrent }: AgentSidebarItemProps) {
+export const AgentSidebarItem = React.memo(function AgentSidebarItem({ id, engine, status }: AgentSidebarItemProps) {
   const isWorking = status === 'working'
   const isDone = status === 'done'
   const isError = status === 'error'
@@ -70,4 +70,4 @@ export function AgentSidebarItem({ id, engine, status, isCurrent }: AgentSidebar
       )}
     </motion.div>
   )
-}
+})
