@@ -76,7 +76,10 @@ export function Terminal() {
   const logContent = useMemo(() => logChunks.join(''), [logChunks])
 
   // Detect agent waiting for input
-  const waitingAgentId = Object.keys(agentStatuses).find(id => agentStatuses[id].status === 'waiting_for_input')
+  const waitingAgentId = useMemo(
+    () => Object.keys(agentStatuses).find(id => agentStatuses[id].status === 'waiting_for_input'),
+    [agentStatuses],
+  )
   const waitingAgent = waitingAgentId ? agentStatuses[waitingAgentId] : null
 
   // Update browser tab title based on run status
