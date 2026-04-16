@@ -1,5 +1,3 @@
-'use client'
-
 import { useEffect, useState } from 'react'
 import { useAgentStatusStore } from '@/stores/agentStatusStore'
 import { useRunStore } from '@/stores/runStore'
@@ -17,24 +15,40 @@ type ConnectionStatus = 'idle' | 'connected' | 'reconnecting' | 'error'
 
 const MAX_RECONNECT = 5
 
-export function useSSEListener(runId: string | null, retryKey = 0): { connectionStatus: ConnectionStatus } {
+export function useSSEListener(
+  runId: string | null,
+  retryKey = 0,
+): { connectionStatus: ConnectionStatus; logContent: string } {
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('idle')
+  const [logContent, setLogContent] = useState('')
 
   useEffect(() => {
-    if (!runId) return
+    if (!runId) {
+      setLogContent('')
+      return
+    }
 
     let es: EventSource | null = null
     let reconnectAttempts = 0
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null
     let destroyed = false
+    let isFirstOpen = true
+
+    // Réinitialiser le log à chaque nouveau run ou retry
+    setLogContent('')
 
     const setupEventSource = () => {
       if (destroyed) return
 
-      es = new EventSource(`/api/runs/${runId}/stream`)
+      es = new EventSource(`/api/runs/${runId}/events`)
 
       es.onopen = () => {
         if (!destroyed) {
+          if (!isFirstOpen) {
+            // Reconnexion : le backend rejoue depuis le début — réinitialiser pour éviter les doublons
+            setLogContent('')
+          }
+          isFirstOpen = false
           setConnectionStatus('connected')
           reconnectAttempts = 0
         }
@@ -99,6 +113,18 @@ export function useSSEListener(runId: string | null, retryKey = 0): { connection
         if (!destroyed) setConnectionStatus('error')
       })
 
+      es.addEventListener('log.append', (e: MessageEvent) => {
+        try {
+          const { chunk } = JSON.parse(e.data) as { chunk: string }
+          if (!destroyed) setLogContent(prev => prev + chunk)
+        } catch {}
+      })
+
+      es.addEventListener('log.done', () => {
+        es?.close()
+        if (!destroyed) setConnectionStatus('idle')
+      })
+
       es.onerror = () => {
         if (destroyed) return
 
@@ -140,5 +166,5 @@ export function useSSEListener(runId: string | null, retryKey = 0): { connection
     }
   }, [runId, retryKey])
 
-  return { connectionStatus }
+  return { connectionStatus, logContent }
 }

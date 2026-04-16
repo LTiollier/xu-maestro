@@ -16,7 +16,6 @@ export function Terminal() {
   const { selectedWorkflow } = useWorkflowStore()
   const agentStatuses = useAgentStatusStore((s) => s.agents)
   
-  const [logContent, setLogContent] = useState('')
   const [brief, setBrief] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isHistoryOpen, setIsHistoryOpen] = useState(false)
@@ -26,8 +25,8 @@ export function Terminal() {
   const scrollRef = useRef<HTMLDivElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
 
-  // SSE Listener
-  useSSEListener(runId, retryKey)
+  // Flux SSE unifié — fournit tous les événements structurés + le contenu du log
+  const { logContent } = useSSEListener(runId, retryKey)
 
   // Detect agent waiting for input
   const waitingAgentId = Object.keys(agentStatuses).find(id => agentStatuses[id].status === 'waiting_for_input')
@@ -52,60 +51,6 @@ export function Terminal() {
 
     document.title = title
   }, [status, agentStatuses, selectedWorkflow])
-
-  useEffect(() => {
-    if (!runId) {
-      setLogContent('')
-      return
-    }
-
-    let es: EventSource | null = null
-    let reconnectTimer: ReturnType<typeof setTimeout> | null = null
-    let reconnectAttempts = 0
-    let isFirstOpen = true
-    let destroyed = false
-
-    const setupEs = () => {
-      if (destroyed) return
-
-      es = new EventSource(`/api/runs/${runId}/log-stream`)
-
-      es.onopen = () => {
-        if (!isFirstOpen && !destroyed) {
-          // Le backend rejoue depuis le début — réinitialiser pour éviter les doublons
-          setLogContent('')
-        }
-        isFirstOpen = false
-      }
-
-      es.addEventListener('log.append', (e: MessageEvent) => {
-        try {
-          const { chunk } = JSON.parse(e.data) as { chunk: string }
-          if (!destroyed) setLogContent(prev => prev + chunk)
-        } catch {}
-      })
-
-      es.addEventListener('log.done', () => es?.close())
-
-      es.onerror = () => {
-        if (destroyed) return
-        es?.close()
-        if (reconnectAttempts < 5) {
-          reconnectAttempts++
-          const delay = Math.min(1000 * Math.pow(2, reconnectAttempts - 1), 30_000)
-          reconnectTimer = setTimeout(setupEs, delay)
-        }
-      }
-    }
-
-    setupEs()
-
-    return () => {
-      destroyed = true
-      if (reconnectTimer) clearTimeout(reconnectTimer)
-      es?.close()
-    }
-  }, [runId, retryKey])
 
   useEffect(() => {
     if (status === 'running') {

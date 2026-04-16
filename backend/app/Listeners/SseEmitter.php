@@ -10,6 +10,7 @@ use App\Events\AgentStatusChanged;
 use App\Events\AgentWaitingForInput;
 use App\Events\RunCompleted;
 use App\Events\RunError;
+use Illuminate\Support\Facades\File;
 
 class SseEmitter
 {
@@ -29,6 +30,7 @@ class SseEmitter
         echo "event: agent.status.changed\n";
         echo "data: " . json_encode($payload, JSON_THROW_ON_ERROR) . "\n\n";
         flush();
+        $this->flushNewLogContent($event->runId);
     }
 
     public function handleAgentLogLine(AgentLogLine $event): void
@@ -46,6 +48,7 @@ class SseEmitter
         echo "event: agent.log_line\n";
         echo "data: " . json_encode($payload, JSON_THROW_ON_ERROR) . "\n\n";
         flush();
+        $this->flushNewLogContent($event->runId);
     }
 
     public function handleAgentBubble(AgentBubble $event): void
@@ -63,6 +66,7 @@ class SseEmitter
         echo "event: agent.bubble\n";
         echo "data: " . json_encode($payload, JSON_THROW_ON_ERROR) . "\n\n";
         flush();
+        $this->flushNewLogContent($event->runId);
     }
 
     public function handleAgentWaitingForInput(AgentWaitingForInput $event): void
@@ -80,6 +84,7 @@ class SseEmitter
         echo "event: agent.waiting_for_input\n";
         echo "data: " . json_encode($payload, JSON_THROW_ON_ERROR) . "\n\n";
         flush();
+        $this->flushNewLogContent($event->runId);
     }
 
     public function handleRunCompleted(RunCompleted $event): void
@@ -98,6 +103,7 @@ class SseEmitter
         echo "event: run.completed\n";
         echo "data: " . json_encode($payload, JSON_THROW_ON_ERROR) . "\n\n";
         flush();
+        $this->flushNewLogContent($event->runId);
     }
 
     public function handleRunError(RunError $event): void
@@ -115,6 +121,7 @@ class SseEmitter
         echo "event: run.error\n";
         echo "data: " . json_encode($payload, JSON_THROW_ON_ERROR) . "\n\n";
         flush();
+        $this->flushNewLogContent($event->runId);
     }
 
     private function appendEventToLog(string $runId, string $type, array $payload): void
@@ -123,5 +130,42 @@ class SseEmitter
         cache()->add($countKey, 0, 7200);
         $index = cache()->increment($countKey);
         cache()->put("run:{$runId}:event:{$index}", ['type' => $type, 'payload' => $payload], 7200);
+    }
+
+    /**
+     * Émet les nouveaux octets de session.md en tant qu'événements log.append.
+     * Activé uniquement pour l'endpoint unifié (/runs/{id}/events).
+     */
+    private function flushNewLogContent(string $runId): void
+    {
+        if (! cache()->has("run:{$runId}:unified")) {
+            return;
+        }
+
+        $runPath = cache()->get("run:{$runId}:path");
+        if ($runPath === null) {
+            return;
+        }
+
+        $sessionPath = $runPath . '/session.md';
+        if (! File::exists($sessionPath)) {
+            return;
+        }
+
+        $offsetKey = "run:{$runId}:log_offset";
+        $offset    = (int) cache()->get($offsetKey, 0);
+
+        try {
+            $content = File::get($sessionPath);
+            $chunk   = substr($content, $offset);
+            if ($chunk !== '') {
+                cache()->put($offsetKey, $offset + strlen($chunk), 7200);
+                echo "event: log.append\n";
+                echo 'data: ' . json_encode(['chunk' => $chunk], JSON_THROW_ON_ERROR) . "\n\n";
+                flush();
+            }
+        } catch (\Throwable) {
+            // Lecture échouée — on ignore ce tick
+        }
     }
 }
