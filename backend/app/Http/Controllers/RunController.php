@@ -45,6 +45,9 @@ class RunController extends Controller
                 continue;
             }
 
+            // Mettre en cache le chemin pour les futurs appels à findRunPath (Story 4.1 optimization)
+            cache()->put("run_path:{$runId}", $dir, 86400);
+
             // Exclure les runs encore actifs en cache (AC 7)
             if (cache()->has("run:{$runId}")) {
                 continue;
@@ -195,4 +198,59 @@ class RunController extends Controller
         ], 202);
     }
 
+    public function logs(string $id): JsonResponse
+    {
+        // Try cache first (active run)
+        $runPath = cache()->get("run:{$id}:path");
+
+        // If not in cache, try historical path cache
+        if (! $runPath) {
+            $runPath = cache()->get("run_path:{$id}");
+        }
+
+        // If still not found, scan directories (history run)
+        if (! $runPath) {
+            $runPath = $this->findRunPath($id);
+        }
+
+        if (! $runPath || ! File::exists($runPath . '/session.md')) {
+            return response()->json([
+                'message' => "Logs not found for run: {$id}",
+                'code'    => 'LOGS_NOT_FOUND',
+            ], 404);
+        }
+
+        return response()->json([
+            'runId' => $id,
+            'logs'  => File::get($runPath . '/session.md'),
+        ]);
+    }
+
+    private function findRunPath(string $runId): ?string
+    {
+        $runsPath = config('xu-workflow.runs_path');
+        if (! File::exists($runsPath)) {
+            return null;
+        }
+
+        foreach (File::directories($runsPath) as $dir) {
+            $checkpointPath = $dir . '/checkpoint.json';
+            if (! File::exists($checkpointPath)) {
+                continue;
+            }
+
+            try {
+                $checkpoint = json_decode(File::get($checkpointPath), true, 512, JSON_THROW_ON_ERROR);
+                if (($checkpoint['runId'] ?? null) === $runId) {
+                    // Mettre en cache pour la prochaine fois
+                    cache()->put("run_path:{$runId}", $dir, 86400);
+                    return $dir;
+                }
+            } catch (\Throwable) {
+                continue;
+            }
+        }
+
+        return null;
+    }
 }

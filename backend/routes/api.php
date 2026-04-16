@@ -9,6 +9,7 @@ Route::get('/workflows', [WorkflowController::class, 'index']);
 Route::get('/runs', [RunController::class, 'index']);
 Route::post('/runs', [RunController::class, 'store']);
 Route::delete('/runs/{id}', [RunController::class, 'destroy']);
+Route::get('/runs/{id}/logs', [RunController::class, 'logs']);
 Route::get('/runs/{id}/events', [EventsSseController::class, 'stream']);
 Route::post('/runs/{id}/retry-step', [RunController::class, 'retryStep']);
 Route::post('/runs/{id}/answer', [RunController::class, 'answer']);

@@ -26,8 +26,43 @@ export function useSSEListener(
   useEffect(() => {
     if (!runId) {
       setLogChunks([])
+      setConnectionStatus('idle')
       return
     }
+
+    const currentStatus = useRunStore.getState().status
+    const abortController = new AbortController()
+
+    // Cas d'un run chargé depuis l'historique (déjà terminé/en erreur/annulé)
+    if (currentStatus !== 'running' && currentStatus !== 'idle') {
+      setLogChunks([])
+      const fetchLogs = async () => {
+        try {
+          const res = await fetch(`/api/runs/${runId}/logs`, {
+            signal: abortController.signal,
+          })
+          if (res.ok) {
+            const data = await res.json()
+            setLogChunks([data.logs])
+            setConnectionStatus('idle')
+          } else {
+            setConnectionStatus('error')
+          }
+        } catch (e) {
+          if ((e as Error).name !== 'AbortError') {
+            console.error('[useSSEListener] Failed to fetch historical logs', e)
+            setConnectionStatus('error')
+          }
+        }
+      }
+      fetchLogs()
+      return () => {
+        abortController.abort()
+      }
+    }
+
+    // Cas d'un run actif (idle is a transition state just before running)
+    // If it's already running or about to, we want SSE.
 
     let es: EventSource | null = null
     let reconnectAttempts = 0
@@ -181,6 +216,7 @@ export function useSSEListener(
       clearTimeout(timeoutId)
       if (reconnectTimer) clearTimeout(reconnectTimer)
       es?.close()
+      abortController.abort()
     }
   }, [runId, retryKey])
 
