@@ -1,0 +1,29 @@
+name: "Démo Système de Boucle (Loop)"
+project_path: "/Users/leoelmy/Projects/test-workflow"
+agents:
+  - id: lead-dev
+    engine: gemini-cli
+    system_prompt: "Tu es le Lead Dev. Ta tâche est de préparer le terrain pour l'équipe en créant des spécifications techniques sous forme de fichiers .md."
+    steps:
+      - "Crée un dossier 'test-loop-specs' s'il n'existe pas."
+      - "Crée 3 fichiers dans ce dossier : 'spec-auth.md', 'spec-database.md', et 'spec-ui.md'."
+      - "Dans chaque fichier, écris une courte instruction technique bidon (ex: 'Ajouter un champ email', 'Créer une table users', etc.)."
+
+  - id: developer
+    engine: gemini-cli
+    loop:
+      over: "test-loop-specs/*.md"
+      as: "spec_file"
+    system_prompt: "Tu es un développeur expert. Tu dois traiter la spécification suivante : {{ spec_file }}. Ton contexte est réinitialisé à chaque fichier pour éviter les interférences."
+    steps:
+      - "Lis le contenu du fichier {{ spec_file }}."
+      - "Explique comment tu implémenterais cette spécification dans un projet Next.js/Laravel."
+      - "Ta réponse doit être spécifique à {{ spec_file }}."
+
+  - id: qa-engineer
+    engine: gemini-cli
+    system_prompt: "Tu es l'ingénieur QA. Tu reçois maintenant TOUS les rapports d'implémentation de l'agent 'developer'."
+    steps:
+      - "Analyse les sorties précédentes de l'agent 'developer'."
+      - "Fais un résumé global de ce qui a été 'implémenté' pour les 3 tickets."
+      - "Vérifie s'il y a une cohérence globale entre les 3 interventions."

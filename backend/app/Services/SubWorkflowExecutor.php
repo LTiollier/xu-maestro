@@ -11,6 +11,8 @@ use App\Exceptions\RunCancelledException;
 
 final class SubWorkflowExecutor
 {
+    use \App\Support\SanitizesEnvCredentials;
+
     public function __construct(
         private readonly DriverResolver $driverResolver,
         private readonly YamlService $yamlService,
@@ -42,40 +44,55 @@ final class SubWorkflowExecutor
                 }
             }
 
-            foreach ($subWorkflow['agents'] as $subAgent) {
-                if (cache()->get("run:{$runId}:cancelled", false)) {
-                    throw new RunCancelledException($runId);
+            $loopConfig = $nodeAgent['loop'] ?? null;
+            $items      = $loopConfig ? $this->resolveLoopItems($loopConfig['over'], $subWorkflow['project_path']) : [null];
+            $baseContext = $this->artifactService->getContextContent($runPath);
+
+            foreach ($items as $itemIndex => $item) {
+                $variables = $item !== null ? [$loopConfig['as'] => $item] : [];
+                $iterationContext = $baseContext;
+                
+                if ($item !== null) {
+                    event(new AgentBubble($runId, $nodeId, "Démarrage de l'itération " . ($itemIndex + 1) . "/" . count($items) . " : " . $item, $stepIndex));
                 }
 
-                $prefixedId = $nodeId . '--' . $subAgent['id'];
-
-                $timeout = isset($subAgent['timeout']) && is_int($subAgent['timeout']) && $subAgent['timeout'] > 0
-                    ? $subAgent['timeout']
-                    : (int) (config('xu-workflow.default_timeout') ?? 120);
-
-                $subIsMandatory = isset($subAgent['mandatory']) && $subAgent['mandatory'] === true;
-
-                $systemPrompt = $this->contextBuilder->resolveSystemPrompt($subAgent);
-                $context      = $this->artifactService->getContextContent($runPath);
-
-                $driver    = $this->driverResolver->for($subAgent['engine']);
-                $rawOutput = $driver->execute(
-                    $subWorkflow['project_path'],
-                    $systemPrompt,
-                    $this->contextBuilder->build($context, $subAgent),
-                    $timeout
-                );
-
-                $this->artifactService->appendAgentOutput($runPath, $prefixedId, $rawOutput);
-
-                try {
-                    $this->jsonValidator->validate($prefixedId, $rawOutput);
-                } catch (\Throwable $e) {
-                    if ($subIsMandatory) {
-                        throw $e;
+                foreach ($subWorkflow['agents'] as $subAgent) {
+                    if (cache()->get("run:{$runId}:cancelled", false)) {
+                        throw new RunCancelledException($runId);
                     }
-                    logger()->warning('Non-mandatory sub-agent failed', ['runId' => $runId, 'agentId' => $prefixedId, 'error' => $e->getMessage()]);
-                    continue;
+
+                    $prefixedId = $nodeId . '--' . ($item !== null ? ($itemIndex + 1) . '--' : '') . $subAgent['id'];
+
+                    $timeout = isset($subAgent['timeout']) && is_int($subAgent['timeout']) && $subAgent['timeout'] > 0
+                        ? $subAgent['timeout']
+                        : (int) (config('xu-workflow.default_timeout') ?? 120);
+
+                    $subIsMandatory = isset($subAgent['mandatory']) && $subAgent['mandatory'] === true;
+
+                    $systemPrompt = $this->contextBuilder->resolveSystemPrompt($subAgent, $variables);
+                    $driver       = $this->driverResolver->for($subAgent['engine']);
+
+                    $rawOutput = $driver->execute(
+                        $subWorkflow['project_path'],
+                        $systemPrompt,
+                        $this->contextBuilder->build($iterationContext, $subAgent, false, $variables),
+                        $timeout
+                    );
+
+                    $this->artifactService->appendAgentOutput($runPath, $prefixedId, $rawOutput);
+                    
+                    // Update iterationContext for next sub-agent in SAME iteration
+                    $iterationContext .= "\n---\n## Agent: {$prefixedId}\n" . $this->sanitizeEnvCredentials($rawOutput) . "\n";
+
+                    try {
+                        $this->jsonValidator->validate($prefixedId, $rawOutput);
+                    } catch (\Throwable $e) {
+                        if ($subIsMandatory) {
+                            throw $e;
+                        }
+                        logger()->warning('Non-mandatory sub-agent failed', ['runId' => $runId, 'agentId' => $prefixedId, 'error' => $e->getMessage()]);
+                        continue;
+                    }
                 }
             }
 
@@ -97,5 +114,20 @@ final class SubWorkflowExecutor
             $this->artifactService->finalizeRun($runPath, 'error', (int) round((microtime(true) - $startedAt) * 1000), count($completedAgents));
             throw $e;
         }
+    }
+
+    private function resolveLoopItems(string $over, string $projectPath): array
+    {
+        $fullPath = $projectPath . '/' . $over;
+        $files    = glob($fullPath);
+        if ($files === false) {
+            return [];
+        }
+
+        return array_map(function ($file) use ($projectPath) {
+            $relative = str_replace($projectPath, '', $file);
+
+            return ltrim($relative, '/');
+        }, $files);
     }
 }

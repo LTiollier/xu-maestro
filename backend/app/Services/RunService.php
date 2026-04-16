@@ -115,7 +115,6 @@ class RunService
     ): void {
         $workflowFile  = $workflow['file'];
         $agentResults  = array_map(fn ($id) => ['id' => $id, 'status' => 'done'], $completedAgents);
-        $context       = $this->artifactService->getContextContent($runPath);
         $skipNextAgent = false;
 
         foreach ($workflow['agents'] as $stepIndex => $agent) {
@@ -148,7 +147,6 @@ class RunService
                 );
                 $completedAgents[] = $agentId;
                 $agentResults[]    = ['id' => $agentId, 'status' => 'done'];
-                $context = $this->artifactService->getContextContent($runPath);
                 continue;
             }
 
@@ -158,10 +156,6 @@ class RunService
             $timeout = isset($agent['timeout']) && is_int($agent['timeout']) && $agent['timeout'] > 0
                 ? $agent['timeout']
                 : (int) (config('xu-workflow.default_timeout') ?? 120);
-
-            $systemPrompt    = $this->contextBuilder->resolveSystemPrompt($agent);
-            $nextAgent       = $workflow['agents'][$stepIndex + 1] ?? null;
-            $nextIsSkippable = isset($nextAgent['skippable']) && $nextAgent['skippable'] === true;
 
             // Retry : même pattern que $timeout (champ optionnel, valeurs par défaut sûres)
             $isMandatory = isset($agent['mandatory']) && $agent['mandatory'] === true;
@@ -181,180 +175,202 @@ class RunService
             ]);
 
             // Émettre AgentStatusChanged(working) sauf pour l'agent fautif en retry
-            // (ses events ont déjà été émis dans executeFromCheckpoint avant la boucle).
-            // $firstWorkingEmitted = true quand executeFromCheckpoint a déjà émis l'event du startStep.
             if ($stepIndex > $startStep || ($stepIndex === $startStep && !$firstWorkingEmitted)) {
                 event(new AgentStatusChanged($runId, $agentId, 'working', $stepIndex, ''));
             }
 
-            // Contexte additionnel accumulé entre chaque échange Q&R du même agent
-            $additionalContext = '';
+            // --- Logique de Boucle (Loop) ---
+            $loopConfig = $agent['loop'] ?? null;
+            $items      = $loopConfig ? $this->resolveLoopItems($loopConfig['over'], $workflow['project_path']) : [null];
+            
+            // On fige le contexte de base pour toutes les itérations (isolation/clear context)
+            $baseContext = $this->artifactService->getContextContent($runPath);
+            $lastDecoded = null;
 
-            // Boucle externe : relance le même agent tant qu'il pose des questions
-            while (true) {
-                $attempt       = 0;
-                $totalAttempts = $maxRetries + 1;
-                do {
-                    $attempt++;
+            foreach ($items as $index => $item) {
+                $variables         = $item !== null ? [$loopConfig['as'] => $item] : [];
+                $iterationAgentId  = $item !== null ? $agentId . '--' . ($index + 1) : $agentId;
+                $systemPrompt      = $this->contextBuilder->resolveSystemPrompt($agent, $variables);
+                $nextAgent         = $workflow['agents'][$stepIndex + 1] ?? null;
+                $nextIsSkippable   = isset($nextAgent['skippable']) && $nextAgent['skippable'] === true;
 
-                    if (cache()->get("run:{$runId}:cancelled", false)) {
-                        throw new RunCancelledException($runId);
-                    }
+                if ($item !== null) {
+                    event(new AgentBubble($runId, $agentId, "Démarrage de l'itération " . ($index + 1) . "/" . count($items) . " : " . $item, $stepIndex));
+                }
 
-                    try {
-                        $logCallback = function (string $line) use ($runId, $agentId, $stepIndex): void {
-                            event(new AgentLogLine($runId, $agentId, $line, $stepIndex));
-                        };
+                // Contexte additionnel accumulé entre chaque échange Q&R du même agent
+                $additionalContext = '';
 
-                        $rawOutput = $driver->execute(
-                            $workflow['project_path'],
-                            $systemPrompt,
-                            $this->contextBuilder->build($context . $additionalContext, $agent, $nextIsSkippable),
-                            $timeout,
-                            $logCallback
-                        );
-                        $decoded = $this->jsonValidator->validate($agentId, $rawOutput);
-                        break; // succès — sortir de la boucle retry
-                    } catch (CliExecutionException $e) {
-                        if ($attempt <= $maxRetries) {
-                            event(new AgentBubble($runId, $agentId, "Tentative {$attempt}/{$totalAttempts} échouée — relance en cours...", $stepIndex));
-                            event(new AgentStatusChanged($runId, $agentId, 'working', $stepIndex, ''));
-                            continue;
-                        }
-                        $msg = $e->getMessage();
-                        logger()->error('Agent CLI execution failed', ['runId' => $runId, 'agentId' => $agentId, 'step' => $stepIndex, 'error' => $msg]);
-                        event(new AgentStatusChanged($runId, $agentId, 'error', $stepIndex, $msg));
-                        event(new RunError(
-                            runId:          $runId,
-                            agentId:        $agentId,
-                            step:           $stepIndex,
-                            message:        $msg,
-                            checkpointPath: $runPath . '/checkpoint.json',
-                        ));
-                        cache()->put("run:{$runId}:error_emitted", true, 60);
-                        $this->artifactService->finalizeRun($runPath, 'error', (int) round((microtime(true) - $startedAt) * 1000), count($completedAgents));
-                        throw new CliExecutionException($agentId, $e->exitCode, $e->stderr);
-                    } catch (ProcessTimedOutException) {
-                        if ($attempt <= $maxRetries) {
-                            event(new AgentBubble($runId, $agentId, "Tentative {$attempt}/{$totalAttempts} échouée — relance en cours...", $stepIndex));
-                            event(new AgentStatusChanged($runId, $agentId, 'working', $stepIndex, ''));
-                            continue;
-                        }
-                        $msg = "Timeout after {$timeout}s";
-                        logger()->error('Agent timed out', ['runId' => $runId, 'agentId' => $agentId, 'step' => $stepIndex, 'timeout' => $timeout]);
-                        event(new AgentStatusChanged($runId, $agentId, 'error', $stepIndex, $msg));
-                        event(new RunError(
-                            runId:          $runId,
-                            agentId:        $agentId,
-                            step:           $stepIndex,
-                            message:        $msg,
-                            checkpointPath: $runPath . '/checkpoint.json',
-                        ));
-                        cache()->put("run:{$runId}:error_emitted", true, 60);
-                        $this->artifactService->finalizeRun($runPath, 'error', (int) round((microtime(true) - $startedAt) * 1000), count($completedAgents));
-                        throw new AgentTimeoutException($agentId, $timeout);
-                    } catch (InvalidJsonOutputException $e) {
-                        if ($attempt <= $maxRetries) {
-                            event(new AgentBubble($runId, $agentId, "Tentative {$attempt}/{$totalAttempts} échouée — relance en cours...", $stepIndex));
-                            event(new AgentStatusChanged($runId, $agentId, 'working', $stepIndex, ''));
-                            continue;
-                        }
-                        $msg = "Invalid JSON output from {$agentId}: {$e->getMessage()}";
-                        logger()->error('Agent invalid JSON output', ['runId' => $runId, 'agentId' => $agentId, 'step' => $stepIndex, 'error' => $e->getMessage()]);
-                        event(new AgentStatusChanged($runId, $agentId, 'error', $stepIndex, $msg));
-                        event(new RunError(
-                            runId:          $runId,
-                            agentId:        $agentId,
-                            step:           $stepIndex,
-                            message:        $msg,
-                            checkpointPath: $runPath . '/checkpoint.json',
-                        ));
-                        cache()->put("run:{$runId}:error_emitted", true, 60);
-                        $this->artifactService->finalizeRun($runPath, 'error', (int) round((microtime(true) - $startedAt) * 1000), count($completedAgents));
-                        throw $e;
-                    }
-                } while ($attempt <= $maxRetries);
+                // Boucle externe : relance le même agent tant qu'il pose des questions
+                while (true) {
+                    $attempt       = 0;
+                    $totalAttempts = $maxRetries + 1;
+                    do {
+                        $attempt++;
 
-                // Si l'agent demande une interaction utilisateur — pause et polling
-                if ($decoded['status'] === 'waiting_for_input') {
-                    $question = (string) $decoded['question'];
-
-                    cache()->put("run:{$runId}:pending_question:{$agentId}", $question, 3600);
-                    event(new AgentStatusChanged($runId, $agentId, 'waiting_for_input', $stepIndex, $question));
-                    event(new AgentWaitingForInput($runId, $agentId, $question, $stepIndex));
-
-                    // Checkpoint : currentStep reste $stepIndex pour reprendre sur le même agent
-                    $this->checkpointService->write($runPath, [
-                        'runId'           => $runId,
-                        'workflowFile'    => $workflowFile,
-                        'brief'           => $brief,
-                        'completedAgents' => $completedAgents,
-                        'currentAgent'    => $agentId,
-                        'currentStep'     => $stepIndex,
-                        'context'         => $runPath . '/session.md',
-                    ]);
-
-                    // Polling jusqu'à réception de la réponse (max 15 min = 900 itérations)
-                    $answer = null;
-                    for ($i = 0; $i < 900; $i++) {
                         if (cache()->get("run:{$runId}:cancelled", false)) {
                             throw new RunCancelledException($runId);
                         }
-                        $answer = cache()->get("run:{$runId}:user_answer:{$agentId}");
-                        if ($answer !== null) {
-                            break;
+
+                        try {
+                            $logCallback = function (string $line) use ($runId, $agentId, $stepIndex): void {
+                                event(new AgentLogLine($runId, $agentId, $line, $stepIndex));
+                            };
+
+                            $rawOutput = $driver->execute(
+                                $workflow['project_path'],
+                                $systemPrompt,
+                                $this->contextBuilder->build($baseContext . $additionalContext, $agent, $nextIsSkippable, $variables),
+                                $timeout,
+                                $logCallback
+                            );
+                            $decoded = $this->jsonValidator->validate($iterationAgentId, $rawOutput);
+                            break; // succès — sortir de la boucle retry
+                        } catch (CliExecutionException $e) {
+                            if ($attempt <= $maxRetries) {
+                                event(new AgentBubble($runId, $agentId, "Tentative {$attempt}/{$totalAttempts} échouée — relance en cours...", $stepIndex));
+                                event(new AgentStatusChanged($runId, $agentId, 'working', $stepIndex, ''));
+                                continue;
+                            }
+                            $msg = $e->getMessage();
+                            logger()->error('Agent CLI execution failed', ['runId' => $runId, 'agentId' => $iterationAgentId, 'step' => $stepIndex, 'error' => $msg]);
+                            event(new AgentStatusChanged($runId, $agentId, 'error', $stepIndex, $msg));
+                            event(new RunError(
+                                runId:          $runId,
+                                agentId:        $agentId,
+                                step:           $stepIndex,
+                                message:        $msg,
+                                checkpointPath: $runPath . '/checkpoint.json',
+                            ));
+                            cache()->put("run:{$runId}:error_emitted", true, 60);
+                            $this->artifactService->finalizeRun($runPath, 'error', (int) round((microtime(true) - $startedAt) * 1000), count($completedAgents));
+                            throw new CliExecutionException($iterationAgentId, $e->exitCode, $e->stderr);
+                        } catch (ProcessTimedOutException) {
+                            if ($attempt <= $maxRetries) {
+                                event(new AgentBubble($runId, $agentId, "Tentative {$attempt}/{$totalAttempts} échouée — relance en cours...", $stepIndex));
+                                event(new AgentStatusChanged($runId, $agentId, 'working', $stepIndex, ''));
+                                continue;
+                            }
+                            $msg = "Timeout after {$timeout}s";
+                            logger()->error('Agent timed out', ['runId' => $runId, 'agentId' => $iterationAgentId, 'step' => $stepIndex, 'timeout' => $timeout]);
+                            event(new AgentStatusChanged($runId, $agentId, 'error', $stepIndex, $msg));
+                            event(new RunError(
+                                runId:          $runId,
+                                agentId:        $agentId,
+                                step:           $stepIndex,
+                                message:        $msg,
+                                checkpointPath: $runPath . '/checkpoint.json',
+                            ));
+                            cache()->put("run:{$runId}:error_emitted", true, 60);
+                            $this->artifactService->finalizeRun($runPath, 'error', (int) round((microtime(true) - $startedAt) * 1000), count($completedAgents));
+                            throw new AgentTimeoutException($iterationAgentId, $timeout);
+                        } catch (InvalidJsonOutputException $e) {
+                            if ($attempt <= $maxRetries) {
+                                event(new AgentBubble($runId, $agentId, "Tentative {$attempt}/{$totalAttempts} échouée — relance en cours...", $stepIndex));
+                                event(new AgentStatusChanged($runId, $agentId, 'working', $stepIndex, ''));
+                                continue;
+                            }
+                            $msg = "Invalid JSON output from {$iterationAgentId}: {$e->getMessage()}";
+                            logger()->error('Agent invalid JSON output', ['runId' => $runId, 'agentId' => $iterationAgentId, 'step' => $stepIndex, 'error' => $e->getMessage()]);
+                            event(new AgentStatusChanged($runId, $agentId, 'error', $stepIndex, $msg));
+                            event(new RunError(
+                                runId:          $runId,
+                                agentId:        $agentId,
+                                step:           $stepIndex,
+                                message:        $msg,
+                                checkpointPath: $runPath . '/checkpoint.json',
+                            ));
+                            cache()->put("run:{$runId}:error_emitted", true, 60);
+                            $this->artifactService->finalizeRun($runPath, 'error', (int) round((microtime(true) - $startedAt) * 1000), count($completedAgents));
+                            throw $e;
                         }
-                        sleep(1);
+                    } while ($attempt <= $maxRetries);
+
+                    // Si l'agent demande une interaction utilisateur — pause et polling
+                    if ($decoded['status'] === 'waiting_for_input') {
+                        $question = (string) $decoded['question'];
+
+                        cache()->put("run:{$runId}:pending_question:{$agentId}", $question, 3600);
+                        event(new AgentStatusChanged($runId, $agentId, 'waiting_for_input', $stepIndex, $question));
+                        event(new AgentWaitingForInput($runId, $agentId, $question, $stepIndex));
+
+                        // Checkpoint : currentStep reste $stepIndex pour reprendre sur le même agent
+                        $this->checkpointService->write($runPath, [
+                            'runId'           => $runId,
+                            'workflowFile'    => $workflowFile,
+                            'brief'           => $brief,
+                            'completedAgents' => $completedAgents,
+                            'currentAgent'    => $agentId,
+                            'currentStep'     => $stepIndex,
+                            'context'         => $runPath . '/session.md',
+                        ]);
+
+                        // Polling jusqu'à réception de la réponse (max 15 min = 900 itérations)
+                        $answer = null;
+                        for ($i = 0; $i < 900; $i++) {
+                            if (cache()->get("run:{$runId}:cancelled", false)) {
+                                throw new RunCancelledException($runId);
+                            }
+                            $answer = cache()->get("run:{$runId}:user_answer:{$agentId}");
+                            if ($answer !== null) {
+                                break;
+                            }
+                            sleep(1);
+                        }
+
+                        if ($answer === null) {
+                            $msg = "Délai de réponse dépassé pour l'agent {$agentId}";
+                            logger()->error('User input timeout', ['runId' => $runId, 'agentId' => $agentId, 'step' => $stepIndex]);
+                            event(new AgentStatusChanged($runId, $agentId, 'error', $stepIndex, $msg));
+                            event(new RunError(
+                                runId:          $runId,
+                                agentId:        $agentId,
+                                step:           $stepIndex,
+                                message:        $msg,
+                                checkpointPath: $runPath . '/checkpoint.json',
+                            ));
+                            cache()->put("run:{$runId}:error_emitted", true, 60);
+                            $this->artifactService->finalizeRun($runPath, 'error', (int) round((microtime(true) - $startedAt) * 1000), count($completedAgents));
+                            throw new \RuntimeException($msg);
+                        }
+
+                        // Consommer la réponse et effacer la clé pour permettre une prochaine question
+                        cache()->forget("run:{$runId}:user_answer:{$agentId}");
+                        cache()->forget("run:{$runId}:pending_question:{$agentId}");
+
+                        // Accumuler la Q&R dans le contexte de l'agent pour la prochaine itération
+                        $qaEntry = "**Question :** {$question}\n**Réponse utilisateur :** {$answer}";
+                        $additionalContext .= "\n\n---\n## Échange précédent\n{$qaEntry}";
+                        $this->artifactService->appendAgentOutput($runPath, $iterationAgentId, $qaEntry);
+
+                        event(new AgentBubble($runId, $agentId, $answer, $stepIndex));
+                        event(new AgentStatusChanged($runId, $agentId, 'working', $stepIndex, ''));
+
+                        // Relancer le même agent avec la réponse injectée dans le contexte
+                        continue;
                     }
 
-                    if ($answer === null) {
-                        $msg = "Délai de réponse dépassé pour l'agent {$agentId}";
-                        logger()->error('User input timeout', ['runId' => $runId, 'agentId' => $agentId, 'step' => $stepIndex]);
-                        event(new AgentStatusChanged($runId, $agentId, 'error', $stepIndex, $msg));
-                        event(new RunError(
-                            runId:          $runId,
-                            agentId:        $agentId,
-                            step:           $stepIndex,
-                            message:        $msg,
-                            checkpointPath: $runPath . '/checkpoint.json',
-                        ));
-                        cache()->put("run:{$runId}:error_emitted", true, 60);
-                        $this->artifactService->finalizeRun($runPath, 'error', (int) round((microtime(true) - $startedAt) * 1000), count($completedAgents));
-                        throw new \RuntimeException($msg);
-                    }
-
-                    // Consommer la réponse et effacer la clé pour permettre une prochaine question
-                    cache()->forget("run:{$runId}:user_answer:{$agentId}");
-                    cache()->forget("run:{$runId}:pending_question:{$agentId}");
-
-                    // Accumuler la Q&R dans le contexte de l'agent pour la prochaine itération
-                    $qaEntry = "**Question :** {$question}\n**Réponse utilisateur :** {$answer}";
-                    $additionalContext .= "\n\n---\n## Échange précédent\n{$qaEntry}";
-                    $this->artifactService->appendAgentOutput($runPath, $agentId, $qaEntry);
-
-                    event(new AgentBubble($runId, $agentId, $answer, $stepIndex));
-                    event(new AgentStatusChanged($runId, $agentId, 'working', $stepIndex, ''));
-
-                    // Relancer le même agent avec la réponse injectée dans le contexte
-                    continue;
+                    // L'agent a terminé (status != waiting_for_input) — sortir de la boucle
+                    break;
                 }
 
-                // L'agent a terminé (status != waiting_for_input) — sortir de la boucle
-                break;
+                $this->artifactService->appendAgentOutput($runPath, $iterationAgentId, $rawOutput);
+                $lastDecoded = $decoded;
+
+                // Émettre bubble pour cette itération
+                $bubbleMessage = is_string($decoded['output']) ? $decoded['output'] : json_encode($decoded['output']);
+                event(new AgentBubble($runId, $agentId, $bubbleMessage, $stepIndex));
             }
 
-            $this->artifactService->appendAgentOutput($runPath, $agentId, $rawOutput);
-
             // Signal de skip : l'agent demande à sauter le prochain (pris en compte si skippable)
-            if ($decoded['next_action'] === 'skip_next') {
+            if ($lastDecoded && $lastDecoded['next_action'] === 'skip_next') {
                 $skipNextAgent = true;
             }
 
             $completedAgents[] = $agentId;
-            $agentResults[]    = ['id' => $agentId, 'status' => $decoded['status']];
+            $agentResults[]    = ['id' => $agentId, 'status' => $lastDecoded['status'] ?? 'done'];
 
             // Checkpoint POST-COMPLETION (NFR6) : completedAgents inclut maintenant $agentId
-            // Écrit AVANT d'émettre 'done' — garantit qu'aucune progression n'est perdue
             $nextStepIndex = $stepIndex + 1;
             $nextAgentId   = $workflow['agents'][$nextStepIndex]['id'] ?? null;
             $this->checkpointService->write($runPath, [
@@ -367,16 +383,27 @@ class RunService
                 'context'         => $runPath . '/session.md',
             ]);
 
-            $context = $this->artifactService->getContextContent($runPath);
-
-            // Émettre bubble puis done APRÈS écriture checkpoint (NFR6)
-            $bubbleMessage = is_string($decoded['output']) ? $decoded['output'] : json_encode($decoded['output']);
-            event(new AgentBubble($runId, $agentId, $bubbleMessage, $stepIndex));
+            // Émettre done APRÈS écriture checkpoint
             event(new AgentStatusChanged($runId, $agentId, 'done', $stepIndex, ''));
         }
 
         $duration = (int) round((microtime(true) - $startedAt) * 1000);
         $this->artifactService->finalizeRun($runPath, 'completed', $duration, count($agentResults));
         event(new RunCompleted($runId, $duration, count($agentResults), 'completed', $runPath));
+    }
+
+    private function resolveLoopItems(string $over, string $projectPath): array
+    {
+        $fullPath = $projectPath . '/' . $over;
+        $files    = glob($fullPath);
+        if ($files === false) {
+            return [];
+        }
+
+        return array_map(function ($file) use ($projectPath) {
+            $relative = str_replace($projectPath, '', $file);
+
+            return ltrim($relative, '/');
+        }, $files);
     }
 }

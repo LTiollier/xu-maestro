@@ -93,6 +93,19 @@ class YamlService
             if (! in_array($agent['engine'], ['claude-code', 'gemini-cli', 'sub-workflow'], true)) {
                 return false;
             }
+
+            if (isset($agent['loop'])) {
+                if (! is_array($agent['loop'])) {
+                    return false;
+                }
+                if (! isset($agent['loop']['over']) || ! is_string($agent['loop']['over']) || $agent['loop']['over'] === '') {
+                    return false;
+                }
+                if (! isset($agent['loop']['as']) || ! is_string($agent['loop']['as']) || $agent['loop']['as'] === '') {
+                    return false;
+                }
+            }
+
             if ($agent['engine'] === 'sub-workflow') {
                 if (! isset($agent['workflow_file']) || ! is_string($agent['workflow_file']) || $agent['workflow_file'] === '') {
                     return false;

@@ -6,7 +6,7 @@ namespace App\Services;
 
 final class AgentContextBuilder
 {
-    public function build(string $context, array $agent, bool $nextIsSkippable = false): string
+    public function build(string $context, array $agent, bool $nextIsSkippable = false, array $variables = []): string
     {
         $steps = $agent['steps'] ?? [];
 
@@ -15,6 +15,7 @@ final class AgentContextBuilder
         if (! empty($steps)) {
             $result .= "\n\n---\n## Task\n";
             foreach ($steps as $step) {
+                $step = $this->interpolate($step, $variables);
                 $result .= "- {$step}\n";
             }
         }
@@ -38,22 +39,31 @@ final class AgentContextBuilder
         return $result;
     }
 
-    public function resolveSystemPrompt(array $agent): string
+    public function resolveSystemPrompt(array $agent, array $variables = []): string
     {
+        $prompt = '';
         if (isset($agent['system_prompt']) && $agent['system_prompt'] !== '') {
-            return $agent['system_prompt'];
-        }
-
-        if (isset($agent['system_prompt_file']) && $agent['system_prompt_file'] !== '') {
+            $prompt = $agent['system_prompt'];
+        } elseif (isset($agent['system_prompt_file']) && $agent['system_prompt_file'] !== '') {
             $path = config('xu-workflow.prompts_path') . '/' . basename($agent['system_prompt_file']);
             if (file_exists($path)) {
                 $content = file_get_contents($path);
                 if ($content !== false) {
-                    return $content;
+                    $prompt = $content;
                 }
             }
         }
 
-        return '';
+        return $this->interpolate($prompt, $variables);
+    }
+
+    private function interpolate(string $text, array $variables): string
+    {
+        foreach ($variables as $key => $value) {
+            $text = str_replace('{{ ' . $key . ' }}', (string) $value, $text);
+            $text = str_replace('{{' . $key . '}}', (string) $value, $text);
+        }
+
+        return $text;
     }
 }

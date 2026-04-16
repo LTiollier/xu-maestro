@@ -186,12 +186,11 @@ class RunServiceTest extends TestCase
 
         $mockArtifact = $this->createMock(ArtifactService::class);
         $mockArtifact->method('initializeRun')->willReturn('/tmp/test-run');
-        $mockArtifact->expects($this->exactly(3))
+        $mockArtifact->expects($this->exactly(2))
             ->method('getContextContent')
             ->willReturnOnConsecutiveCalls(
                 '# initial session content',
-                '# session content after agent-1',
-                '# session content after agent-2'
+                '# session content after agent-1'
             );
 
         $mockCheckpoint      = $this->createMock(CheckpointService::class);

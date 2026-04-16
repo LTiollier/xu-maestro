@@ -65,6 +65,31 @@ Le moteur `sub-workflow` permet de composer des workflows complexes en appelant 
 
 ---
 
+### Système de Boucle (`loop`)
+Il est possible de faire boucler un agent ou un sous-workflow sur une liste de fichiers (pattern glob). Chaque itération relance l'agent avec un contexte "propre" (isolé des itérations précédentes).
+
+```yaml
+  - id: processeur-de-tickets
+    engine: gemini-cli
+    loop:
+      over: "tickets/*.md"  # Pattern glob relatif au project_path
+      as: "ticket"          # Nom de la variable à injecter
+    system_prompt: "Analyse le ticket : {{ ticket }}"
+    steps:
+      - "Lire le contenu de {{ ticket }}"
+      - "Générer un résumé"
+```
+
+#### Fonctionnement du Loop
+- **`over`** : Un pattern glob (ex: `src/**/*.ts`, `docs/*.md`). Le système résout la liste des fichiers correspondants au début de l'exécution de l'agent.
+- **`as`** : Le nom de la variable que vous pouvez utiliser dans `system_prompt` ou `steps` via la syntaxe `{{ variable }}`.
+- **Isolation du contexte** : Pour chaque itération, l'agent ne voit que le contexte accumulé *avant* le début de la boucle. Il ne voit pas les sorties des itérations précédentes de la même boucle.
+- **Continuité** : Une fois la boucle terminée, TOUTES les sorties de toutes les itérations sont ajoutées au contexte pour les agents suivants.
+- **IDs d'artefacts** : Les fichiers d'artefacts sont nommés `agents/{id}--{index}.md` (ex: `processeur-de-tickets--1.md`).
+- **Sub-workflow** : Si un `sub-workflow` boucle, c'est toute la séquence d'agents du sous-workflow qui est répétée pour chaque item.
+
+---
+
 ### Format de Réponse Attendu des Agents
 Bien que cela concerne l'implémentation de l'agent lui-même, le système impose un format de sortie JSON pour assurer la continuité du workflow. Le système injecte automatiquement cette instruction de formatage dans le prompt de l'agent :
 
