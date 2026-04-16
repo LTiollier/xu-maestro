@@ -27,12 +27,23 @@ export function useWorkflows() {
   }, [setWorkflows, setIsLoading, setError])
 
   useEffect(() => {
-    // Garantit un seul fetch automatique quel que soit le nombre de composants
-    // qui appellent useWorkflows() simultanément
     if (initialized) return
-    setInitialized(true)
+
     const controller = new AbortController()
-    fetchWorkflows(controller.signal)
+    
+    const runFetch = async () => {
+      try {
+        await fetchWorkflows(controller.signal)
+        setInitialized(true)
+      } catch (err) {
+        // En cas d'erreur autre qu'une annulation, on pourra réessayer
+        if (err instanceof Error && err.name !== 'AbortError') {
+          setInitialized(false)
+        }
+      }
+    }
+
+    runFetch()
     return () => { controller.abort() }
   }, [initialized, setInitialized, fetchWorkflows])
 
