@@ -33,6 +33,26 @@ export function Terminal() {
   const waitingAgentId = Object.keys(agentStatuses).find(id => agentStatuses[id].status === 'waiting_for_input')
   const waitingAgent = waitingAgentId ? agentStatuses[waitingAgentId] : null
 
+  // Update browser tab title based on run status
+  useEffect(() => {
+    const total = selectedWorkflow?.agents.length ?? 0
+    const workingCount = Object.values(agentStatuses).filter(a => a.status === 'working').length
+    const hasQuestion = Object.values(agentStatuses).some(a => a.status === 'waiting_for_input')
+
+    let title = 'xu-workflow'
+    if (status === 'running' && hasQuestion) {
+      title = '🟡 xu-workflow'
+    } else if (status === 'running') {
+      title = `🟢 ${workingCount}/${total} · xu-workflow`
+    } else if (status === 'error') {
+      title = '🔴 xu-workflow'
+    } else if (status === 'completed') {
+      title = '🔵 xu-workflow'
+    }
+
+    document.title = title
+  }, [status, agentStatuses, selectedWorkflow])
+
   useEffect(() => {
     if (!runId) {
       setLogContent('')
