@@ -1,6 +1,8 @@
 import { create } from 'zustand'
 import type { AgentState, AgentStatus } from '@/types/run.types'
 
+const MAX_LIVE_LOG_CHARS = 100_000
+
 interface AgentStatusStoreState {
   agents: Record<string, AgentState>
   setAgentStatus: (agentId: string, status: AgentStatus, step: number, message: string) => void
@@ -19,7 +21,7 @@ const DEFAULT_AGENT_STATE: AgentState = {
   progress: 0,
   currentTask: '',
   question: '',
-  liveLogLine: '',
+  liveLogLine: [],
 }
 
 export const useAgentStatusStore = create<AgentStatusStoreState>((set) => ({
@@ -38,7 +40,7 @@ export const useAgentStatusStore = create<AgentStatusStoreState>((set) => ({
             currentTask: status === 'working' ? message : currentAgent.currentTask,
             errorMessage: status === 'error' ? message : currentAgent.errorMessage,
             question: status === 'waiting_for_input' ? message : currentAgent.question,
-            liveLogLine: isTerminal ? '' : currentAgent.liveLogLine,
+            liveLogLine: isTerminal ? [] : currentAgent.liveLogLine,
             // Simple logic: if status is done, progress 100; skipped stays at 0
             progress: status === 'done' ? 100 : (status === 'working' ? Math.max(10, currentAgent.progress) : 0),
           },
@@ -50,12 +52,19 @@ export const useAgentStatusStore = create<AgentStatusStoreState>((set) => ({
       const current = state.agents[agentId]
       // Drop if agent is already in a terminal state (late SSE delivery)
       if (current && current.status !== 'working') return state
+      const next = [...(current?.liveLogLine ?? []), line]
+      // Cap: drop leading chunks until total is under MAX_LIVE_LOG_CHARS
+      let start = 0
+      let total = next.reduce((s, c) => s + c.length, 0)
+      while (start < next.length - 1 && total > MAX_LIVE_LOG_CHARS) {
+        total -= next[start++].length
+      }
       return {
         agents: {
           ...state.agents,
           [agentId]: {
             ...(current ?? DEFAULT_AGENT_STATE),
-            liveLogLine: (current?.liveLogLine ?? '') + line,
+            liveLogLine: start > 0 ? next.slice(start) : next,
           },
         },
       }

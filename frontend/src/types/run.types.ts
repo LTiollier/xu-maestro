@@ -11,7 +11,7 @@ export interface AgentState {
   progress: number
   currentTask: string
   question: string
-  liveLogLine: string
+  liveLogLine: string[]
 }
 
 export interface RunState {

@@ -14,17 +14,18 @@ import {
 type ConnectionStatus = 'idle' | 'connected' | 'reconnecting' | 'error'
 
 const MAX_RECONNECT = 5
+const MAX_LOG_CHARS = 500_000
 
 export function useSSEListener(
   runId: string | null,
   retryKey = 0,
-): { connectionStatus: ConnectionStatus; logContent: string } {
+): { connectionStatus: ConnectionStatus; logChunks: string[] } {
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('idle')
-  const [logContent, setLogContent] = useState('')
+  const [logChunks, setLogChunks] = useState<string[]>([])
 
   useEffect(() => {
     if (!runId) {
-      setLogContent('')
+      setLogChunks([])
       return
     }
 
@@ -35,7 +36,7 @@ export function useSSEListener(
     let isFirstOpen = true
 
     // Réinitialiser le log à chaque nouveau run ou retry
-    setLogContent('')
+    setLogChunks([])
 
     const setupEventSource = () => {
       if (destroyed) return
@@ -46,7 +47,7 @@ export function useSSEListener(
         if (!destroyed) {
           if (!isFirstOpen) {
             // Reconnexion : le backend rejoue depuis le début — réinitialiser pour éviter les doublons
-            setLogContent('')
+            setLogChunks([])
           }
           isFirstOpen = false
           setConnectionStatus('connected')
@@ -116,7 +117,18 @@ export function useSSEListener(
       es.addEventListener('log.append', (e: MessageEvent) => {
         try {
           const { chunk } = JSON.parse(e.data) as { chunk: string }
-          if (!destroyed) setLogContent(prev => prev + chunk)
+          if (!destroyed) {
+            setLogChunks(prev => {
+              const next = [...prev, chunk]
+              // Cap: drop leading chunks until total is under MAX_LOG_CHARS
+              let start = 0
+              let total = next.reduce((s, c) => s + c.length, 0)
+              while (start < next.length - 1 && total > MAX_LOG_CHARS) {
+                total -= next[start++].length
+              }
+              return start > 0 ? next.slice(start) : next
+            })
+          }
         } catch {}
       })
 
@@ -166,5 +178,5 @@ export function useSSEListener(
     }
   }, [runId, retryKey])
 
-  return { connectionStatus, logContent }
+  return { connectionStatus, logChunks }
 }

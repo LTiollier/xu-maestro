@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useRunStore } from '@/stores/runStore'
 import { useAgentStatusStore } from '@/stores/agentStatusStore'
 import { useSSEListener } from '@/hooks/useSSEListener'
@@ -26,7 +26,8 @@ export function Terminal() {
   const bottomRef = useRef<HTMLDivElement>(null)
 
   // Flux SSE unifié — fournit tous les événements structurés + le contenu du log
-  const { logContent } = useSSEListener(runId, retryKey)
+  const { logChunks } = useSSEListener(runId, retryKey)
+  const logContent = useMemo(() => logChunks.join(''), [logChunks])
 
   // Detect agent waiting for input
   const waitingAgentId = Object.keys(agentStatuses).find(id => agentStatuses[id].status === 'waiting_for_input')
@@ -56,7 +57,7 @@ export function Terminal() {
     if (status === 'running') {
       bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
     }
-  }, [logContent, status, waitingAgentId])
+  }, [logChunks, status, waitingAgentId])
 
   const handleLancer = async () => {
     if (!selectedWorkflow || !brief.trim() || isSubmitting) return
@@ -248,7 +249,7 @@ export function Terminal() {
 
           {/* Current Working Agent Live Log */}
           {Object.entries(agentStatuses).map(([id, agent]) => {
-            if (agent.status !== 'working' || !agent.liveLogLine) return null
+            if (agent.status !== 'working' || agent.liveLogLine.length === 0) return null
             // Only show live log if not already in logAgents (though names might differ slightly)
             if (logAgents.some(la => la.name === id)) return null
             
@@ -260,7 +261,7 @@ export function Terminal() {
                   <Loader2 className="w-3 h-3 text-blue-500 animate-spin" />
                 </div>
                 <div className="text-zinc-400 leading-relaxed whitespace-pre-wrap pl-4 border-l border-zinc-800 italic text-[12px]">
-                  {agent.liveLogLine}
+                  {agent.liveLogLine.join('')}
                 </div>
               </div>
             )
