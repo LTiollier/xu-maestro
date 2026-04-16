@@ -398,8 +398,6 @@ class RunService
                 }
             }
 
-            $isMandatory = isset($nodeAgent['mandatory']) && $nodeAgent['mandatory'] === true;
-
             foreach ($subWorkflow['agents'] as $subAgent) {
                 if (cache()->get("run:{$runId}:cancelled", false)) {
                     throw new RunCancelledException($runId);
