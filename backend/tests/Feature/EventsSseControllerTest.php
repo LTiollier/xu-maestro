@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Event;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
-class SseControllerTest extends TestCase
+class EventsSseControllerTest extends TestCase
 {
     protected function setUp(): void
     {
@@ -25,7 +25,7 @@ class SseControllerTest extends TestCase
     #[Test]
     public function it_returns_404_when_run_config_not_in_cache(): void
     {
-        $response = $this->get('/api/runs/nonexistent-run-id/stream');
+        $response = $this->get('/api/runs/nonexistent-run-id/events');
 
         $response->assertStatus(404);
     }
@@ -41,7 +41,7 @@ class SseControllerTest extends TestCase
         $mockRunService = $this->createMock(RunService::class);
         $this->app->instance(RunService::class, $mockRunService);
 
-        $response = $this->get('/api/runs/test-run-id/stream');
+        $response = $this->get('/api/runs/test-run-id/events');
 
         $this->assertStringContainsString('text/event-stream', $response->headers->get('Content-Type') ?? '');
         $this->assertStringContainsString('no-cache', $response->headers->get('Cache-Control') ?? '');
@@ -63,7 +63,7 @@ class SseControllerTest extends TestCase
         $this->app->instance(RunService::class, $mockRunService);
 
         // Invoquer manuellement le callback de la StreamedResponse
-        $response = $this->get('/api/runs/my-run-id/stream');
+        $response = $this->get('/api/runs/my-run-id/events');
         ob_start();
         $response->baseResponse->sendContent();
         ob_end_clean();
@@ -84,7 +84,7 @@ class SseControllerTest extends TestCase
             ->willThrowException(new \RuntimeException('CLI process failed'));
         $this->app->instance(RunService::class, $mockRunService);
 
-        $response = $this->get('/api/runs/error-run-id/stream');
+        $response = $this->get('/api/runs/error-run-id/events');
         ob_start();
         $response->baseResponse->sendContent();
         ob_end_clean();
