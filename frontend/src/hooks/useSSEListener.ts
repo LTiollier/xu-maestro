@@ -129,7 +129,9 @@ export function useSSEListener(
               return start > 0 ? next.slice(start) : next
             })
           }
-        } catch {}
+        } catch (e) {
+          console.error('[SSE log.append] Failed to parse event data', e)
+        }
       })
 
       es.addEventListener('log.done', () => {

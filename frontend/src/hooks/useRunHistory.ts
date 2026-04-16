@@ -1,5 +1,3 @@
-'use client'
-
 import { useState, useCallback } from 'react'
 import type { RunHistoryItem } from '@/types/run.types'
 

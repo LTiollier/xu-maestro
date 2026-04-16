@@ -1,5 +1,3 @@
-'use client'
-
 import { useEffect, useCallback } from 'react'
 import { useWorkflowStore } from '@/stores/workflowStore'
 import type { Workflow } from '@/types/workflow.types'
