@@ -41,11 +41,7 @@ class SseController extends Controller
 
             // Branch A: Reconnexion sur un run déjà terminé
             if ($isDone) {
-                $log = cache()->get("run:{$id}:event_log", []);
-                foreach ($log as $entry) {
-                    echo "event: {$entry['type']}\n";
-                    echo "data: " . json_encode($entry['payload'], JSON_THROW_ON_ERROR) . "\n\n";
-                }
+                $this->replayEvents($id, 1, (int) cache()->get("run:{$id}:event_count", 0));
                 flush();
                 return;
             }
@@ -53,37 +49,23 @@ class SseController extends Controller
             // Branch B: Run déjà actif (reconnexion pendant exécution)
             // On replay le log existant puis on boucle pour attendre la suite
             if ($isActive) {
-                $log = cache()->get("run:{$id}:event_log", []);
-                $offset = count($log);
-                foreach ($log as $entry) {
-                    echo "event: {$entry['type']}\n";
-                    echo "data: " . json_encode($entry['payload'], JSON_THROW_ON_ERROR) . "\n\n";
-                }
+                $offset = (int) cache()->get("run:{$id}:event_count", 0);
+                $this->replayEvents($id, 1, $offset);
                 flush();
 
                 while (! cache()->has("run:{$id}:done") && ! connection_aborted()) {
-                    $log = cache()->get("run:{$id}:event_log", []);
-                    $count = count($log);
+                    $count = (int) cache()->get("run:{$id}:event_count", 0);
                     if ($count > $offset) {
-                        for ($i = $offset; $i < $count; $i++) {
-                            $entry = $log[$i];
-                            echo "event: {$entry['type']}\n";
-                            echo "data: " . json_encode($entry['payload'], JSON_THROW_ON_ERROR) . "\n\n";
-                            $offset++;
-                        }
+                        $this->replayEvents($id, $offset + 1, $count);
+                        $offset = $count;
                         flush();
                     }
                     usleep(500000); // 500ms
                 }
-                
+
                 // Flush final pour les events de complétion émis juste après la boucle
-                $log = cache()->get("run:{$id}:event_log", []);
-                $count = count($log);
-                for ($i = $offset; $i < $count; $i++) {
-                    $entry = $log[$i];
-                    echo "event: {$entry['type']}\n";
-                    echo "data: " . json_encode($entry['payload'], JSON_THROW_ON_ERROR) . "\n\n";
-                }
+                $count = (int) cache()->get("run:{$id}:event_count", 0);
+                $this->replayEvents($id, $offset + 1, $count);
                 flush();
                 return;
             }
@@ -91,7 +73,7 @@ class SseController extends Controller
             // Branch C: Premier démarrage du run (ou retry)
             try {
                 if ($retryCheckpoint) {
-                    cache()->forget("run:{$id}:event_log");
+                    $this->clearEventLog($id);
                     $this->runService->executeFromCheckpoint($id, $retryCheckpoint);
                 } else {
                     $this->runService->execute($id, $config['workflowFile'], $config['brief']);
@@ -115,5 +97,25 @@ class SseController extends Controller
             'X-Accel-Buffering' => 'no',
             'Connection'        => 'keep-alive',
         ]);
+    }
+
+    private function replayEvents(string $id, int $from, int $to): void
+    {
+        for ($i = $from; $i <= $to; $i++) {
+            $entry = cache()->get("run:{$id}:event:{$i}");
+            if ($entry !== null) {
+                echo "event: {$entry['type']}\n";
+                echo "data: " . json_encode($entry['payload'], JSON_THROW_ON_ERROR) . "\n\n";
+            }
+        }
+    }
+
+    private function clearEventLog(string $id): void
+    {
+        $count = (int) cache()->get("run:{$id}:event_count", 0);
+        for ($i = 1; $i <= $count; $i++) {
+            cache()->forget("run:{$id}:event:{$i}");
+        }
+        cache()->forget("run:{$id}:event_count");
     }
 }

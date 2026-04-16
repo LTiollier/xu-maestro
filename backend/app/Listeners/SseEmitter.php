@@ -119,9 +119,9 @@ class SseEmitter
 
     private function appendEventToLog(string $runId, string $type, array $payload): void
     {
-        $key = "run:{$runId}:event_log";
-        $log = cache()->get($key, []);
-        $log[] = ['type' => $type, 'payload' => $payload];
-        cache()->put($key, $log, 7200);
+        $countKey = "run:{$runId}:event_count";
+        cache()->add($countKey, 0, 7200);
+        $index = cache()->increment($countKey);
+        cache()->put("run:{$runId}:event:{$index}", ['type' => $type, 'payload' => $payload], 7200);
     }
 }
