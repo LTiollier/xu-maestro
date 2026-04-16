@@ -4,7 +4,6 @@ import { useRunStore } from '@/stores/runStore'
 import { SSE_EVENT_TYPES } from '@/types/sse.types'
 import {
   parseAgentStatusChanged,
-  parseAgentBubble,
   parseAgentLogLine,
   parseAgentWaitingForInput,
   parseRunCompleted,
@@ -119,12 +118,6 @@ export function useSSEListener(
         )
       })
 
-      es.addEventListener(SSE_EVENT_TYPES.AGENT_BUBBLE, (e: MessageEvent) => {
-        const payload = parseAgentBubble(e.data)
-        if (!payload) return
-        useAgentStatusStore.getState().setAgentBubble(payload.agentId, payload.message)
-      })
-
       es.addEventListener(SSE_EVENT_TYPES.RUN_COMPLETED, (e: MessageEvent) => {
         const payload = parseRunCompleted(e.data)
         if (!payload) return
@@ -195,8 +188,8 @@ export function useSSEListener(
           const agents = useAgentStatusStore.getState().agents
           const workingEntry = Object.entries(agents).find(([, s]) => s.status === 'working')
           if (workingEntry) {
-            const [agentId, agentState] = workingEntry
-            useAgentStatusStore.getState().setAgentStatus(agentId, 'error', agentState.step, 'Connexion SSE perdue')
+            const [agentId] = workingEntry
+            useAgentStatusStore.getState().setAgentStatus(agentId, 'error', 0, 'Connexion SSE perdue')
           } else {
             useRunStore.getState().setRunError('Connexion SSE perdue')
           }

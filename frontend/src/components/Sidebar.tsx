@@ -106,7 +106,7 @@ export function Sidebar() {
       {/* Footer Meta (Optionnel) */}
       <div className="p-4 border-t border-zinc-800 bg-black/20">
         <div className="flex items-center justify-between text-[10px] text-zinc-600 font-bold uppercase tracking-widest font-mono">
-          <span>v2.0 Beta</span>
+          <span>Pipeline Stable</span>
           <span className="text-emerald-500/50">Online</span>
         </div>
       </div>

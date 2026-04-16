@@ -7,7 +7,7 @@ import type { AgentState, RunStatus } from '@/types/run.types'
 import { ErrorBanner } from './ErrorBanner'
 
 const QuestionInteraction = dynamic(
-  () => import('@/components/v2/QuestionInteraction'),
+  () => import('@/components/QuestionInteraction'),
   { ssr: false },
 )
 
@@ -66,8 +66,8 @@ interface LogViewerProps {
   status: RunStatus
   errorMessage: string | null
   onRetry: () => void
-  bottomRef: React.RefObject<HTMLDivElement>
-  scrollRef: React.RefObject<HTMLDivElement>
+  bottomRef: React.RefObject<HTMLDivElement | null>
+  scrollRef: React.RefObject<HTMLDivElement | null>
 }
 
 export function LogViewer({

@@ -1,6 +1,5 @@
 import type {
   AgentStatusChangedEvent,
-  AgentBubbleEvent,
   AgentLogLineEvent,
   AgentWaitingForInputEvent,
   RunCompletedEvent,
@@ -15,16 +14,6 @@ export function parseAgentStatusChanged(raw: string): AgentStatusChangedEvent | 
     if (!data.runId || !data.agentId) return null
     if (!VALID_AGENT_STATUSES.includes(data.status)) return null
     return data as AgentStatusChangedEvent
-  } catch {
-    return null
-  }
-}
-
-export function parseAgentBubble(raw: string): AgentBubbleEvent | null {
-  try {
-    const data = JSON.parse(raw)
-    if (!data.runId || !data.agentId || !data.message) return null
-    return data as AgentBubbleEvent
   } catch {
     return null
   }

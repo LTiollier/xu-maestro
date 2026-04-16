@@ -1,5 +1,5 @@
-import { Sidebar } from '@/components/v2/Sidebar'
-import { Terminal } from '@/components/v2/Terminal'
+import { Sidebar } from '@/components/Sidebar'
+import { Terminal } from '@/components/Terminal'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 
 export default function Home() {

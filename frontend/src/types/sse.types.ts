@@ -9,14 +9,6 @@ export interface AgentStatusChangedEvent {
   timestamp: string
 }
 
-export interface AgentBubbleEvent {
-  runId: string
-  agentId: string
-  message: string
-  step: number
-  timestamp: string
-}
-
 export interface AgentLogLineEvent {
   runId: string
   agentId: string
@@ -53,7 +45,6 @@ export interface RunErrorEvent {
 
 export const SSE_EVENT_TYPES = {
   AGENT_STATUS_CHANGED: 'agent.status.changed',
-  AGENT_BUBBLE: 'agent.bubble',
   AGENT_LOG_LINE: 'agent.log_line',
   AGENT_WAITING_FOR_INPUT: 'agent.waiting_for_input',
   RUN_COMPLETED: 'run.completed',
