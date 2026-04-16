@@ -107,7 +107,6 @@ class SseEmitter
             'agentId'        => $event->agentId,
             'step'           => $event->step,
             'message'        => $event->message,
-            'checkpointPath' => $event->checkpointPath,
             'timestamp'      => now()->toIso8601String(),
         ];
 
