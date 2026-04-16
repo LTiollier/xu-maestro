@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import dynamic from 'next/dynamic'
 import { useRunStore } from '@/stores/runStore'
 import { useAgentStatusStore } from '@/stores/agentStatusStore'
@@ -108,7 +108,7 @@ export function Terminal() {
     }
   }, [logChunks, status, waitingAgentId])
 
-  const handleLancer = async () => {
+  const handleLancer = useCallback(async () => {
     if (!selectedWorkflow || !brief.trim() || isSubmitting) return
     setIsSubmitting(true)
     useAgentStatusStore.getState().resetAgents()
@@ -126,9 +126,9 @@ export function Terminal() {
     } finally {
       setIsSubmitting(false)
     }
-  }
+  }, [selectedWorkflow, brief, isSubmitting, setRunId])
 
-  const handleAnnuler = async () => {
+  const handleAnnuler = useCallback(async () => {
     if (!runId) return
     try {
       const res = await fetch(`/api/runs/${runId}`, { method: 'DELETE' })
@@ -139,9 +139,9 @@ export function Terminal() {
     } catch (e) {
       console.error(e)
     }
-  }
+  }, [runId, resetRun])
 
-  const handleRetry = async () => {
+  const handleRetry = useCallback(async () => {
     if (!runId) return
     try {
       const res = await fetch(`/api/runs/${runId}/retry-step`, { method: 'POST' })
@@ -151,9 +151,9 @@ export function Terminal() {
     } catch (e) {
       console.error(e)
     }
-  }
+  }, [runId, setRetrying])
 
-  const handleSendAnswer = async () => {
+  const handleSendAnswer = useCallback(async () => {
     if (!runId || !waitingAgentId || !answer.trim() || isAnswering) return
     setIsAnswering(true)
     try {
@@ -170,7 +170,7 @@ export function Terminal() {
     } finally {
       setIsAnswering(false)
     }
-  }
+  }, [runId, waitingAgentId, answer, isAnswering])
 
   const logAgents = useMemo(() => {
     if (!logContent) return []
