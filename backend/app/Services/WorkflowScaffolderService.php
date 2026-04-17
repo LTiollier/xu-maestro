@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services;
 
-use App\Drivers\GeminiDriver;
+use App\Drivers\DriverResolver;
 use App\Exceptions\ScaffoldException;
 use Symfony\Component\Yaml\Exception\ParseException;
 use Symfony\Component\Yaml\Yaml;
@@ -13,7 +13,7 @@ class WorkflowScaffolderService
 {
 
     public function __construct(
-        private readonly GeminiDriver $geminiDriver,
+        private readonly DriverResolver $resolver,
         private readonly YamlService $yamlService,
     ) {}
 
@@ -22,9 +22,10 @@ class WorkflowScaffolderService
      *
      * @throws ScaffoldException
      */
-    public function scaffold(string $brief): array
+    public function scaffold(string $brief, string $engine = 'gemini-cli'): array
     {
-        $rawYaml = $this->geminiDriver->prompt($this->buildSystemPrompt(), $brief);
+        $driver  = $this->resolver->for($engine);
+        $rawYaml = $driver->prompt($this->buildSystemPrompt(), $brief);
         $rawYaml = $this->stripFences($rawYaml);
 
         try {

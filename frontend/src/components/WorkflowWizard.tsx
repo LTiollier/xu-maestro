@@ -10,6 +10,13 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import type { Workflow } from '@/types/workflow.types'
 
 interface WorkflowWizardProps {
@@ -30,6 +37,7 @@ function resetFormState() {
   return {
     step: 1 as Step,
     brief: '',
+    engine: 'gemini-cli',
     yamlContent: '',
     filename: '',
     generateError: '',
@@ -46,6 +54,7 @@ export function WorkflowWizard({ open, onOpenChange }: WorkflowWizardProps) {
 
   const [step, setStep] = useState<Step>(1)
   const [brief, setBrief] = useState('')
+  const [engine, setEngine] = useState('gemini-cli')
   const [yamlContent, setYamlContent] = useState('')
   const [filename, setFilename] = useState('')
   const [generateError, setGenerateError] = useState('')
@@ -58,6 +67,7 @@ export function WorkflowWizard({ open, onOpenChange }: WorkflowWizardProps) {
     const s = resetFormState()
     setStep(s.step)
     setBrief(s.brief)
+    setEngine(s.engine)
     setYamlContent(s.yamlContent)
     setFilename(s.filename)
     setGenerateError(s.generateError)
@@ -86,7 +96,7 @@ export function WorkflowWizard({ open, onOpenChange }: WorkflowWizardProps) {
       const res = await fetch('/api/workflows/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ brief }),
+        body: JSON.stringify({ brief, engine }),
         signal: abortRef.current.signal,
       })
 
@@ -186,6 +196,20 @@ export function WorkflowWizard({ open, onOpenChange }: WorkflowWizardProps) {
             <p className="text-xs text-zinc-400">
               Décrivez votre objectif en langage naturel. L&apos;IA génèrera un workflow YAML adapté.
             </p>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs text-zinc-500 font-medium">Modèle de génération</label>
+              <Select value={engine} onValueChange={setEngine}>
+                <SelectTrigger className="w-full bg-zinc-800 border-zinc-700 text-zinc-200 h-9 rounded-lg focus:ring-0">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-zinc-800 border-zinc-700 text-zinc-200">
+                  <SelectItem value="gemini-cli">Gemini (Rapide)</SelectItem>
+                  <SelectItem value="claude-code">Claude (Précis)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
             <textarea
               className="w-full min-h-[120px] rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-200 text-sm px-3 py-2 resize-y focus:outline-none focus:ring-1 focus:ring-zinc-500 placeholder:text-zinc-600"
               placeholder="Ex: Migrer une application React vers Next.js, analyser le code, effectuer la migration, puis valider les tests."

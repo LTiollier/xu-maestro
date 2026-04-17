@@ -81,6 +81,11 @@ class ClaudeDriver implements DriverInterface
         return $resultFound ? $finalResult : $result->output();
     }
 
+    public function prompt(string $systemPrompt, string $userPrompt, int $timeout = 60): string
+    {
+        return $this->execute(sys_get_temp_dir(), $systemPrompt, $userPrompt, $timeout);
+    }
+
     public function kill(int $pid): void
     {
         if ($pid > 0 && function_exists('posix_kill')) {

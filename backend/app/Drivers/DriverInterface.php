@@ -19,6 +19,12 @@ interface DriverInterface
     public function execute(string $projectPath, string $systemPrompt, string $context, int $timeout, ?callable $onOutput = null): string;
 
     /**
+     * Send a direct prompt to the model and return the response.
+     * Useful for scaffolding or simple queries that don't require full agent execution.
+     */
+    public function prompt(string $systemPrompt, string $userPrompt, int $timeout = 60): string;
+
+    /**
      * Send SIGTERM to a running CLI process by PID.
      * Used by SSE handler (Story 2.4) for mid-execution cancellation.
      */

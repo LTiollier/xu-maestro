@@ -32,7 +32,10 @@ final class WorkflowController extends Controller
     public function generate(GenerateWorkflowRequest $request): JsonResponse
     {
         try {
-            $result = $this->scaffolder->scaffold($request->validated('brief'));
+            $result = $this->scaffolder->scaffold(
+                $request->validated('brief'),
+                $request->validated('engine', 'gemini-cli')
+            );
         } catch (ScaffoldException $e) {
             return response()->json([
                 'error'    => $e->getMessage(),
