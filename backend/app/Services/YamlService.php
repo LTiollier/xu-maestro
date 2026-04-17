@@ -8,7 +8,7 @@ use App\Exceptions\YamlLoadException;
 use Symfony\Component\Yaml\Exception\ParseException;
 use Symfony\Component\Yaml\Yaml;
 
-class YamlService
+final class YamlService
 {
     public function loadAll(): array
     {
@@ -62,6 +62,28 @@ class YamlService
         return $data;
     }
 
+    public function save(string $filename, string $yamlContent, bool $force = false): void
+    {
+        $workflowsPath = config('xu-workflow.workflows_path');
+        if (! is_string($workflowsPath) || $workflowsPath === '') {
+            throw new \RuntimeException('workflows_path is not configured');
+        }
+
+        $safe = basename($filename);
+        if (! str_ends_with($safe, '.yaml')) {
+            $safe .= '.yaml';
+        }
+        $path = $workflowsPath . '/' . $safe;
+
+        if (! $force && file_exists($path)) {
+            throw new \RuntimeException("Workflow file already exists: {$safe}");
+        }
+
+        if (file_put_contents($path, $yamlContent) === false) {
+            throw new \RuntimeException("Failed to write workflow file: {$safe}");
+        }
+    }
+
     public function validate(mixed $data): bool
     {
         if (! is_array($data)) {
@@ -72,7 +94,7 @@ class YamlService
             return false;
         }
 
-        if (! isset($data['project_path']) || ! is_string($data['project_path']) || $data['project_path'] === '') {
+        if (! isset($data['project_path']) || ! is_string($data['project_path'])) {
             return false;
         }
 

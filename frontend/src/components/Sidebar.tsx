@@ -1,6 +1,6 @@
 'use client'
 
-import React from 'react'
+import React, { useState } from 'react'
 import { useWorkflowStore } from '@/stores/workflowStore'
 import { useAgentStatusStore } from '@/stores/agentStatusStore'
 import { AgentSidebarItem } from './AgentSidebarItem'
@@ -11,10 +11,11 @@ import {
   SelectTrigger,
   SelectValue
 } from '@/components/ui/select'
-import { Layers, Users, RefreshCw, Loader2 } from 'lucide-react'
+import { Layers, Users, RefreshCw, Loader2, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useWorkflows } from '@/hooks/useWorkflows'
 import type { AgentStatus } from '@/types/run.types'
+import { WorkflowWizard } from './WorkflowWizard'
 
 const AgentSidebarItemConnected = React.memo(function AgentSidebarItemConnected({
   agentId,
@@ -30,6 +31,7 @@ const AgentSidebarItemConnected = React.memo(function AgentSidebarItemConnected(
 export function Sidebar() {
   const { workflows, selectedWorkflow, setSelectedWorkflow, isLoading } = useWorkflowStore()
   const { reload } = useWorkflows()
+  const [wizardOpen, setWizardOpen] = useState(false)
 
   const handleSelect = (file: string | null) => {
     if (!file) {
@@ -51,15 +53,26 @@ export function Sidebar() {
               Pipeline / Team
             </span>
           </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={reload}
-            disabled={isLoading}
-            className="h-6 w-6 text-zinc-600 hover:text-zinc-400"
-          >
-            {isLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
-          </Button>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setWizardOpen(true)}
+              aria-label="Nouveau Workflow"
+              className="h-6 w-6 text-zinc-600 hover:text-zinc-400"
+            >
+              <Plus className="w-3 h-3" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={reload}
+              disabled={isLoading}
+              className="h-6 w-6 text-zinc-600 hover:text-zinc-400"
+            >
+              {isLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+            </Button>
+          </div>
         </div>
 
         <Select 
@@ -110,6 +123,7 @@ export function Sidebar() {
           <span className="text-emerald-500/50">Online</span>
         </div>
       </div>
+      <WorkflowWizard open={wizardOpen} onOpenChange={setWizardOpen} />
     </aside>
   )
 }

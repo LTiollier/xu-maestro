@@ -17,6 +17,26 @@ class GeminiDriver implements DriverInterface
             ? $systemPrompt . "\n\n" . $context
             : $context;
 
+        return $this->runGeminiStream($projectPath, $command, $input, $timeout, $onOutput);
+    }
+
+    public function prompt(string $systemPrompt, string $userPrompt, int $timeout = 60): string
+    {
+        $command = 'gemini --prompt "" --output-format stream-json';
+        $input   = $systemPrompt . "\n\n" . $userPrompt;
+
+        return $this->runGeminiStream(sys_get_temp_dir(), $command, $input, $timeout);
+    }
+
+    public function kill(int $pid): void
+    {
+        if ($pid > 0 && function_exists('posix_kill')) {
+            posix_kill($pid, SIGTERM);
+        }
+    }
+
+    private function runGeminiStream(string $path, string $command, string $input, int $timeout, ?callable $onOutput = null): string
+    {
         $buffer              = '';
         $accumulatedResponse = '';
 
@@ -60,7 +80,7 @@ class GeminiDriver implements DriverInterface
             }
         };
 
-        $result = Process::path($projectPath)
+        $result = Process::path($path)
             ->input($input)
             ->timeout($timeout)
             ->run($command, function (string $type, string $chunk) use (&$buffer, $parseLine): void {
@@ -90,12 +110,5 @@ class GeminiDriver implements DriverInterface
         }
 
         return $accumulatedResponse ?: $result->output();
-    }
-
-    public function kill(int $pid): void
-    {
-        if ($pid > 0 && function_exists('posix_kill')) {
-            posix_kill($pid, SIGTERM);
-        }
     }
 }

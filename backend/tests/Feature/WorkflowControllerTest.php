@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Exceptions\ScaffoldException;
+use App\Services\WorkflowScaffolderService;
 use Illuminate\Support\Facades\Config;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
@@ -276,5 +278,274 @@ YAML);
 
         $response->assertStatus(200);
         $response->assertExactJson([]);
+    }
+
+    // --- generate() ---
+
+    #[Test]
+    public function generate_returns_422_when_brief_is_too_short(): void
+    {
+        $response = $this->postJson('/api/workflows/generate', ['brief' => 'short']);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrorFor('brief');
+    }
+
+    #[Test]
+    public function generate_returns_200_with_yaml_and_parsed(): void
+    {
+        $yaml = implode("\n", [
+            'name: "Test Workflow"',
+            'project_path: ""',
+            'agents:',
+            '  - id: test-agent',
+            '    engine: claude-code',
+            '    steps:',
+            '      - "Do something"',
+        ]);
+
+        $this->mock(WorkflowScaffolderService::class)
+             ->shouldReceive('scaffold')
+             ->once()
+             ->andReturn([
+                 'yaml'   => $yaml,
+                 'parsed' => [
+                     'name'         => 'Test Workflow',
+                     'project_path' => '',
+                     'agents'       => [['id' => 'test-agent', 'engine' => 'claude-code', 'steps' => ['Do something']]],
+                 ],
+             ]);
+
+        $response = $this->postJson('/api/workflows/generate', ['brief' => 'A valid brief that is long enough to pass validation']);
+
+        $response->assertStatus(200);
+        $response->assertJsonStructure(['yaml', 'parsed']);
+        $response->assertJsonPath('parsed.name', 'Test Workflow');
+    }
+
+    #[Test]
+    public function generate_returns_422_on_scaffold_exception_with_raw_yaml(): void
+    {
+        $this->mock(WorkflowScaffolderService::class)
+             ->shouldReceive('scaffold')
+             ->once()
+             ->andThrow(new ScaffoldException('YAML invalide : unexpected token', 'bad: yaml: ['));
+
+        $response = $this->postJson('/api/workflows/generate', ['brief' => 'A valid brief that is long enough']);
+
+        $response->assertStatus(422);
+        $response->assertJsonStructure(['error', 'raw_yaml']);
+        $response->assertJsonPath('raw_yaml', 'bad: yaml: [');
+        $this->assertStringContainsString('YAML invalide', $response->json('error'));
+    }
+
+    // --- store() ---
+
+    #[Test]
+    public function store_creates_file_and_returns_201(): void
+    {
+        $yaml = implode("\n", [
+            'name: "New Workflow"',
+            'project_path: "/tmp/project"',
+            'agents:',
+            '  - id: test-agent',
+            '    engine: claude-code',
+            '    steps:',
+            '      - "Do something"',
+        ]);
+
+        $response = $this->postJson('/api/workflows', [
+            'filename'     => 'new-workflow',
+            'yaml_content' => $yaml,
+        ]);
+
+        $response->assertStatus(201);
+        $response->assertJsonPath('name', 'New Workflow');
+        $response->assertJsonPath('file', 'new-workflow.yaml');
+        $this->assertFileExists($this->tmpDir . '/new-workflow.yaml');
+    }
+
+    #[Test]
+    public function store_response_has_no_data_wrapper(): void
+    {
+        $yaml = implode("\n", [
+            'name: "Flat Response"',
+            'project_path: "/tmp/project"',
+            'agents:',
+            '  - id: flat-agent',
+            '    engine: claude-code',
+            '    steps:',
+            '      - "Step"',
+        ]);
+
+        $response = $this->postJson('/api/workflows', [
+            'filename'     => 'flat-response',
+            'yaml_content' => $yaml,
+        ]);
+
+        $response->assertStatus(201);
+        $this->assertArrayHasKey('name', $response->json());
+        $this->assertArrayNotHasKey('data', $response->json());
+    }
+
+    #[Test]
+    public function store_returns_422_when_filename_is_missing(): void
+    {
+        $response = $this->postJson('/api/workflows', [
+            'yaml_content' => 'name: test',
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrorFor('filename');
+    }
+
+    #[Test]
+    public function store_returns_422_when_filename_has_invalid_characters(): void
+    {
+        $yaml = implode("\n", [
+            'name: "Test"',
+            'project_path: "/tmp"',
+            'agents:',
+            '  - id: test-agent',
+            '    engine: claude-code',
+        ]);
+
+        $response = $this->postJson('/api/workflows', [
+            'filename'     => 'Invalid_Filename',
+            'yaml_content' => $yaml,
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrorFor('filename');
+    }
+
+    #[Test]
+    public function store_returns_422_when_yaml_is_malformed(): void
+    {
+        $response = $this->postJson('/api/workflows', [
+            'filename'     => 'test-workflow',
+            'yaml_content' => "name: \"broken\n  invalid: [yaml",
+        ]);
+
+        $response->assertStatus(422);
+        $this->assertStringContainsString('YAML invalide', $response->json('error'));
+    }
+
+    #[Test]
+    public function store_returns_422_when_project_path_is_empty(): void
+    {
+        $yaml = implode("\n", [
+            'name: "Test"',
+            'project_path: ""',
+            'agents:',
+            '  - id: test-agent',
+            '    engine: claude-code',
+            '    steps:',
+            '      - "Do something"',
+        ]);
+
+        $response = $this->postJson('/api/workflows', [
+            'filename'     => 'test-workflow',
+            'yaml_content' => $yaml,
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('error', 'Le champ project_path est requis avant de sauvegarder');
+    }
+
+    #[Test]
+    public function store_returns_422_when_project_path_is_whitespace_only(): void
+    {
+        $yaml = implode("\n", [
+            'name: "Test"',
+            'project_path: "   "',
+            'agents:',
+            '  - id: test-agent',
+            '    engine: claude-code',
+            '    steps:',
+            '      - "Do something"',
+        ]);
+
+        $response = $this->postJson('/api/workflows', [
+            'filename'     => 'test-workflow',
+            'yaml_content' => $yaml,
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('error', 'Le champ project_path est requis avant de sauvegarder');
+    }
+
+    #[Test]
+    public function store_returns_422_when_structure_is_invalid(): void
+    {
+        $yaml = implode("\n", [
+            'name: "Missing Agents"',
+            'project_path: "/tmp"',
+        ]);
+
+        $response = $this->postJson('/api/workflows', [
+            'filename'     => 'missing-agents',
+            'yaml_content' => $yaml,
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('error', 'Structure de workflow invalide');
+    }
+
+    #[Test]
+    public function store_returns_409_when_file_already_exists(): void
+    {
+        $yaml = implode("\n", [
+            'name: "Existing"',
+            'project_path: "/tmp"',
+            'agents:',
+            '  - id: existing-agent',
+            '    engine: claude-code',
+            '    steps:',
+            '      - "Do something"',
+        ]);
+        file_put_contents($this->tmpDir . '/existing.yaml', $yaml);
+
+        $response = $this->postJson('/api/workflows', [
+            'filename'     => 'existing',
+            'yaml_content' => $yaml,
+        ]);
+
+        $response->assertStatus(409);
+        $response->assertJsonPath('error', 'file_exists');
+    }
+
+    #[Test]
+    public function store_overwrites_when_force_is_true(): void
+    {
+        $originalYaml = implode("\n", [
+            'name: "Original"',
+            'project_path: "/tmp"',
+            'agents:',
+            '  - id: original-agent',
+            '    engine: claude-code',
+            '    steps:',
+            '      - "Original step"',
+        ]);
+        file_put_contents($this->tmpDir . '/overwrite-me.yaml', $originalYaml);
+
+        $newYaml = implode("\n", [
+            'name: "Updated"',
+            'project_path: "/tmp/new"',
+            'agents:',
+            '  - id: updated-agent',
+            '    engine: claude-code',
+            '    steps:',
+            '      - "New step"',
+        ]);
+
+        $response = $this->postJson('/api/workflows', [
+            'filename'     => 'overwrite-me',
+            'yaml_content' => $newYaml,
+            'force'        => true,
+        ]);
+
+        $response->assertStatus(201);
+        $response->assertJsonPath('name', 'Updated');
     }
 }

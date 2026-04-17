@@ -12,6 +12,7 @@ interface WorkflowState {
   setIsLoading: (isLoading: boolean) => void
   setError: (error: string | null) => void
   setInitialized: (initialized: boolean) => void
+  addWorkflow: (workflow: Workflow) => void
 }
 
 export const useWorkflowStore = create<WorkflowState>((set) => ({
@@ -25,4 +26,8 @@ export const useWorkflowStore = create<WorkflowState>((set) => ({
   setIsLoading: (isLoading) => set({ isLoading }),
   setError: (error) => set({ error }),
   setInitialized: (initialized) => set({ initialized }),
+  addWorkflow: (workflow) => set((state) => ({
+    workflows: [...state.workflows, workflow],
+    selectedWorkflow: workflow,
+  })),
 }))
