@@ -1,6 +1,6 @@
 ### Configuration des Workflows YAML
 
-Cette documentation détaille la structure et les options disponibles pour la rédaction des fichiers de workflow YAML dans le système **xu-workflow**, basées sur l'analyse du code source du backend (notamment `YamlService.php` et `RunService.php`).
+Cette documentation détaille la structure et les options disponibles pour la rédaction des fichiers de workflow YAML dans le système **XuMaestro**, basées sur l'analyse du code source du backend (notamment `YamlService.php` et `RunService.php`).
 
 ---
 

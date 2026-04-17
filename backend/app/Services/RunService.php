@@ -155,7 +155,7 @@ class RunService
             // Patch A5 rétro Épic 2 : éviter (int) config(..., 120) qui caste null en 0
             $timeout = isset($agent['timeout']) && is_int($agent['timeout']) && $agent['timeout'] > 0
                 ? $agent['timeout']
-                : (int) (config('xu-workflow.default_timeout') ?? 120);
+                : (int) (config('xu-maestro.default_timeout') ?? 120);
 
             // Retry : même pattern que $timeout (champ optionnel, valeurs par défaut sûres)
             $isMandatory = isset($agent['mandatory']) && $agent['mandatory'] === true;

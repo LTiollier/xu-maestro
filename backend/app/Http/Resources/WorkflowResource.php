@@ -17,7 +17,7 @@ final class WorkflowResource extends JsonResource
             'agents' => array_map(fn ($agent) => [
                 'id'      => $agent['id'],
                 'engine'  => $agent['engine'],
-                'timeout' => (int) ($agent['timeout'] ?? config('xu-workflow.default_timeout')),
+                'timeout' => (int) ($agent['timeout'] ?? config('xu-maestro.default_timeout')),
                 'steps'   => $agent['steps'] ?? [],
             ], $this->resource['agents'] ?? []),
         ];

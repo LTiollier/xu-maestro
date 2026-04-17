@@ -5,5 +5,5 @@ return [
     'workflows_path'  => base_path('../workflows'),
     'runs_path'       => base_path('../runs'),
     'prompts_path'    => base_path('../prompts'),
-    'yolo_mode'       => env('XU_YOLO_MODE', true),
+    'yolo_mode'       => env('XU_MAESTRO_YOLO_MODE', true),
 ];

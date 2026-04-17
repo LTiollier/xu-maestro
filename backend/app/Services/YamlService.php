@@ -12,7 +12,7 @@ final class YamlService
 {
     public function loadAll(): array
     {
-        $path = config('xu-workflow.workflows_path');
+        $path = config('xu-maestro.workflows_path');
 
         if (! is_string($path) || $path === '') {
             return [];
@@ -41,7 +41,7 @@ final class YamlService
     public function load(string $filename): array
     {
         $safe = basename($filename);
-        $path = config('xu-workflow.workflows_path') . '/' . $safe;
+        $path = config('xu-maestro.workflows_path') . '/' . $safe;
 
         if (! file_exists($path)) {
             throw new YamlLoadException("Workflow file not found: {$safe}");
@@ -64,7 +64,7 @@ final class YamlService
 
     public function save(string $filename, string $yamlContent, bool $force = false): void
     {
-        $workflowsPath = config('xu-workflow.workflows_path');
+        $workflowsPath = config('xu-maestro.workflows_path');
         if (! is_string($workflowsPath) || $workflowsPath === '') {
             throw new \RuntimeException('workflows_path is not configured');
         }
@@ -132,7 +132,7 @@ final class YamlService
                 if (! isset($agent['workflow_file']) || ! is_string($agent['workflow_file']) || $agent['workflow_file'] === '') {
                     return false;
                 }
-                $workflowsPath = config('xu-workflow.workflows_path');
+                $workflowsPath = config('xu-maestro.workflows_path');
                 if (! is_string($workflowsPath) || $workflowsPath === '') {
                     return false;
                 }

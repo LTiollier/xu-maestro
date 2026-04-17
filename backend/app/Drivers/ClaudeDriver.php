@@ -13,7 +13,7 @@ class ClaudeDriver implements DriverInterface
     {
         $command = 'claude -p --verbose --allowedTools "Bash,Read,Write,Edit" --output-format stream-json';
 
-        if (config('xu-workflow.yolo_mode')) {
+        if (config('xu-maestro.yolo_mode')) {
             $command .= ' --dangerously-skip-permissions';
         }
 

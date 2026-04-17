@@ -28,12 +28,12 @@ so that le frontend peut récupérer la liste des workflows et leurs configurati
   - [x] Créer `backend/routes/api.php` avec la route `GET /workflows`
 
 - [x] **T2 — Créer le dossier workflows/ et un exemple YAML** (AC: 1, 3)
-  - [x] Créer le dossier `xu-workflow/workflows/` (au même niveau que `backend/` et `frontend/`)
+  - [x] Créer le dossier `XuMaestro/workflows/` (au même niveau que `backend/` et `frontend/`)
   - [x] Créer `workflows/example.yaml` avec le schéma minimal valide (voir §YAML Schema)
 
 - [x] **T3 — Créer YamlService** (AC: 1, 3, 5)
   - [x] Créer `backend/app/Services/YamlService.php`
-  - [x] Méthode `loadAll(): array` — glob `config('xu-workflow.workflows_path').'/*.yaml'`, parse chaque fichier via `Symfony\Component\Yaml\Yaml::parseFile()`, catch `ParseException`, exclure silencieusement les invalides
+  - [x] Méthode `loadAll(): array` — glob `config('xu-maestro.workflows_path').'/*.yaml'`, parse chaque fichier via `Symfony\Component\Yaml\Yaml::parseFile()`, catch `ParseException`, exclure silencieusement les invalides
   - [x] Méthode `validate(array $data): bool` — vérifie la présence de `name` (string non vide) et `agents` (array non vide avec chaque agent ayant `id`, `engine`)
 
 - [x] **T4 — Créer WorkflowResource et WorkflowController** (AC: 1, 2, 4)
@@ -57,7 +57,7 @@ so that le frontend peut récupérer la liste des workflows et leurs configurati
 - [x] [Review][Defer] Pas d'authentification sur `GET /api/workflows` — intentionnel : localhost single-user, pas d'auth dans ce projet [backend/routes/api.php] — deferred, pre-existing
 - [x] [Review][Defer] AC 4 (422/YAML_INVALID) non implémenté — spec dit "si demandé explicitement", aucun endpoint de validation explicite n'est dans le scope de cette story — deferred, pre-existing
 - [x] [Review][Defer] Extension `.yml` non scannée — spec utilise `.yaml` de façon consistante, choix délibéré [backend/app/Services/YamlService.php] — deferred, pre-existing
-- [x] [Review][Defer] `base_path('../workflows')` fragile dans un container — pré-existant Story 1.1, non introduit par cette story [backend/config/xu-workflow.php] — deferred, pre-existing
+- [x] [Review][Defer] `base_path('../workflows')` fragile dans un container — pré-existant Story 1.1, non introduit par cette story [backend/config/xu-maestro.php] — deferred, pre-existing
 - [x] [Review][Defer] `JsonResource::withoutWrapping()` global — intentionnel : toutes les Resources du projet doivent être sans wrapper [backend/app/Providers/AppServiceProvider.php] — deferred, pre-existing
 
 ---
@@ -93,13 +93,13 @@ return Application::configure(basePath: dirname(__DIR__))
 
 **`JsonResource::withoutWrapping()`** déjà configuré dans `AppServiceProvider::boot()` ✅ — ne pas retoucher.
 
-**`config/xu-workflow.php`** existe avec `workflows_path => base_path('../workflows')` → résout en `/path/to/xu-workflow/workflows/` ✅
+**`config/xu-maestro.php`** existe avec `workflows_path => base_path('../workflows')` → résout en `/path/to/XuMaestro/workflows/` ✅
 
 ---
 
 ### §YAML Schema — Structure attendue
 
-Les YAML workflow résident dans `xu-workflow/workflows/` (pas dans `backend/`).
+Les YAML workflow résident dans `XuMaestro/workflows/` (pas dans `backend/`).
 
 **Champs obligatoires pour la Story 1.3 :**
 
@@ -156,7 +156,7 @@ class WorkflowResource extends JsonResource
             'agents' => array_map(fn($agent) => [
                 'id'      => $agent['id'],
                 'engine'  => $agent['engine'],
-                'timeout' => $agent['timeout'] ?? config('xu-workflow.default_timeout'),
+                'timeout' => $agent['timeout'] ?? config('xu-maestro.default_timeout'),
             ], $this->resource['agents'] ?? []),
         ];
     }
@@ -181,7 +181,7 @@ class YamlService
 {
     public function loadAll(): array
     {
-        $path = config('xu-workflow.workflows_path');
+        $path = config('xu-maestro.workflows_path');
         $files = glob($path . '/*.yaml') ?: [];
         $workflows = [];
 
@@ -274,7 +274,7 @@ Laravel 13 avec `->withRouting(api: ...)` préfixe automatiquement les routes du
 **Points clés :**
 - Array à la racine (pas `{ "data": [...] }`) — garanti par `JsonResource::withoutWrapping()` ✅
 - Tous les champs en camelCase
-- `timeout` utilise `config('xu-workflow.default_timeout')` (120) si absent du YAML
+- `timeout` utilise `config('xu-maestro.default_timeout')` (120) si absent du YAML
 
 ---
 
@@ -330,7 +330,7 @@ public function test_response_fields_are_camel_case(): void
 | Utiliser `kill(int $pid)` dans les Drivers | La méthode s'appelle `cancel(string $jobId)` (patch Story 1.1) |
 | Retourner `{ "data": [...] }` | `WorkflowResource::collection()` avec `withoutWrapping()` retourne un array directement |
 | Appel direct à `file_get_contents()` ou `yaml_parse_file()` | Utiliser `Symfony\Component\Yaml\Yaml::parseFile()` |
-| Créer le dossier `workflows/` dans `backend/` | Le dossier est `xu-workflow/workflows/` — au niveau racine du projet |
+| Créer le dossier `workflows/` dans `backend/` | Le dossier est `XuMaestro/workflows/` — au niveau racine du projet |
 | Laisser `routes/api.php` inexistant | Créer le fichier, Laravel ne le génère pas automatiquement en v13 |
 
 ---
@@ -354,7 +354,7 @@ php artisan test --filter WorkflowControllerTest
 ### §Structure finale attendue après Story 1.3
 
 ```
-xu-workflow/
+XuMaestro/
 ├── workflows/
 │   └── example.yaml              ← nouveau
 ├── backend/
@@ -380,7 +380,7 @@ xu-workflow/
 ### Apprentissages des stories précédentes applicables
 
 **Story 1.1 :**
-- `config/xu-workflow.php` contient `workflows_path => base_path('../workflows')` — chemin correct ✅
+- `config/xu-maestro.php` contient `workflows_path => base_path('../workflows')` — chemin correct ✅
 - `JsonResource::withoutWrapping()` déjà en place — ne pas re-configurer
 - `DriverInterface::cancel(string $jobId)` — PAS `kill(int $pid)` (patch appliqué)
 - Laravel 13.3.0 (pas 13.1.1 — version patch ultérieure, compatible)

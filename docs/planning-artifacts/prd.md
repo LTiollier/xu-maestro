@@ -15,7 +15,7 @@ brainstormingCount: 1
 projectDocsCount: 0
 ---
 
-# Product Requirements Document - xu-workflow
+# Product Requirements Document - XuMaestro
 
 **Author:** Léo
 **Date:** 2026-04-02
@@ -24,7 +24,7 @@ projectDocsCount: 0
 
 ## Executive Summary
 
-xu-workflow est un orchestrateur d'agents IA CLI local, piloté par des fichiers YAML déclaratifs. Il permet à un développeur de définir une équipe d'agents spécialisés (Claude Code, Gemini CLI) exécutés en pipeline séquentiel, avec un contexte ciblé par agent. L'application est destinée à un usage personnel — remplacer Claude Code en usage solo quotidien, au travail comme en perso — en résolvant la dégradation structurelle d'un agent unique gérant trop de responsabilités sur une fenêtre de contexte partagée.
+XuMaestro est un orchestrateur d'agents IA CLI local, piloté par des fichiers YAML déclaratifs. Il permet à un développeur de définir une équipe d'agents spécialisés (Claude Code, Gemini CLI) exécutés en pipeline séquentiel, avec un contexte ciblé par agent. L'application est destinée à un usage personnel — remplacer Claude Code en usage solo quotidien, au travail comme en perso — en résolvant la dégradation structurelle d'un agent unique gérant trop de responsabilités sur une fenêtre de contexte partagée.
 
 **Problème central :** Un agent qui fait tout oublie des étapes, dérive et produit des sorties de qualité dégradée dès que la tâche est complexe — même avec un CLAUDE.md exhaustif. La cause n'est pas le modèle mais l'architecture : un seul contexte partagé pour tout.
 
@@ -50,7 +50,7 @@ xu-workflow est un orchestrateur d'agents IA CLI local, piloté par des fichiers
 ### User Success
 
 - Premier run complet sans intervention humaine sur un workflow à 2+ agents séquentiels = définition du succès
-- xu-workflow devient le point d'entrée de tout développement — Claude Code n'est plus ouvert directement, il est invoqué en subprocess par le moteur
+- XuMaestro devient le point d'entrée de tout développement — Claude Code n'est plus ouvert directement, il est invoqué en subprocess par le moteur
 - Un run qui reprend depuis un checkpoint après échec partiel est considéré un succès (pas un échec)
 
 ### Business Success
@@ -128,9 +128,9 @@ xu-workflow est un orchestrateur d'agents IA CLI local, piloté par des fichiers
 
 ### Journey 1 — Run complet séquentiel (MVP — Happy Path)
 
-**Contexte :** Léo a une nouvelle feature à développer sur son projet Laravel au travail. Avant xu-workflow, il ouvrait Claude Code, écrivait un prompt long, et espérait que l'agent ne déraille pas à l'étape 6 sur 8.
+**Contexte :** Léo a une nouvelle feature à développer sur son projet Laravel au travail. Avant XuMaestro, il ouvrait Claude Code, écrivait un prompt long, et espérait que l'agent ne déraille pas à l'étape 6 sur 8.
 
-**Scène d'ouverture :** Il ouvre xu-workflow dans le navigateur. Le sélecteur affiche `feature-dev.yaml` — son équipe séquentielle : PM → Laravel Dev → QA → DevOps. Il écrit son brief dans le textarea en bas : *"Ajouter un système de notifications in-app avec badge counter et dropdown"*. Il clique Lancer.
+**Scène d'ouverture :** Il ouvre XuMaestro dans le navigateur. Le sélecteur affiche `feature-dev.yaml` — son équipe séquentielle : PM → Laravel Dev → QA → DevOps. Il écrit son brief dans le textarea en bas : *"Ajouter un système de notifications in-app avec badge counter et dropdown"*. Il clique Lancer.
 
 **Action :** Le diagramme s'anime. PM est `working`. Une bulle SSE apparaît : *"Brief analysé — plan de développement établi. Passage à Laravel Dev."* PM passe en `done`, la flèche s'active vers le nœud suivant. La sidebar `.md` s'enrichit en temps réel — Léo peut voir chaque décision, chaque fichier modifié, sans rien faire.
 
@@ -158,7 +158,7 @@ xu-workflow est un orchestrateur d'agents IA CLI local, piloté par des fichiers
 
 **Scène d'ouverture :** Il crée `workflows/content-writing.yaml` dans son éditeur, définit 3 agents avec leurs `system_prompt_file`, timeouts adaptés (60-120s), et le champ `name: "Rédaction de specs"`.
 
-**Action :** Il revient dans xu-workflow, sélectionne "Rédaction de specs" dans le dropdown. Le diagramme se reconfigure : 3 nœuds en séquence. Il lance un premier test.
+**Action :** Il revient dans XuMaestro, sélectionne "Rédaction de specs" dans le dropdown. Le diagramme se reconfigure : 3 nœuds en séquence. Il lance un premier test.
 
 **Résolution :** Après 2 itérations d'ajustement des system prompts, le workflow produit des specs de qualité autonome. Réutilisable sur tous ses projets.
 
@@ -177,10 +177,10 @@ xu-workflow est un orchestrateur d'agents IA CLI local, piloté par des fichiers
 ### Detected Innovation Areas
 
 **1. Modèle économique "gratuit par construction"**
-Les orchestrateurs existants (LangGraph, CrewAI, n8n, claude-code-workflow) requièrent tous des API keys avec coût variable à l'usage. xu-workflow exploite les abonnements CLI (Claude Code Max, Gemini Code Assist) — coût fixe, quotas généreux. Le coût marginal par run est zéro.
+Les orchestrateurs existants (LangGraph, CrewAI, n8n, claude-code-workflow) requièrent tous des API keys avec coût variable à l'usage. XuMaestro exploite les abonnements CLI (Claude Code Max, Gemini Code Assist) — coût fixe, quotas généreux. Le coût marginal par run est zéro.
 
 **2. YAML déclaratif comme interface principale**
-La plupart des orchestrateurs exposent une API code (Python/Node) ou une UI drag-and-drop. xu-workflow utilise le fichier texte versionnable comme interface primaire — config workflow dans git, diffable, reviewable, partageable. Pas de base de données, pas d'UI de configuration.
+La plupart des orchestrateurs exposent une API code (Python/Node) ou une UI drag-and-drop. XuMaestro utilise le fichier texte versionnable comme interface primaire — config workflow dans git, diffable, reviewable, partageable. Pas de base de données, pas d'UI de configuration.
 
 **3. Moteur agnostique au domaine**
 Le moteur n'a aucune connaissance de ce que font les agents — il orchestre des états et passe des contextes. Un workflow de dev Laravel, de rédaction de specs, ou d'analyse de données utilise la même infrastructure. C'est un OS pour agents CLI.
@@ -195,12 +195,12 @@ La dégradation de qualité d'un LLM seul vient du contexte partagé grandissant
 - LangGraph / CrewAI — puissants mais Python-only, API keys requises, courbe d'apprentissage
 - n8n — visual workflow, mais pas optimisé pour CLI headless AI
 
-**Positionnement xu-workflow :** interface web locale simple, YAML lisible par tout développeur, zéro API key, domaine-agnostique, dossiers run git-friendly.
+**Positionnement XuMaestro :** interface web locale simple, YAML lisible par tout développeur, zéro API key, domaine-agnostique, dossiers run git-friendly.
 
 ### Validation Approach
 
 - **Architecture :** Un run complet séquentiel sans intervention sur un vrai projet = validation core
-- **Qualité :** Comparer output xu-workflow multi-agents vs Claude Code solo sur la même tâche
+- **Qualité :** Comparer output XuMaestro multi-agents vs Claude Code solo sur la même tâche
 - **Modèle économique :** Zéro friction — pas de carte de crédit, pas de clé API à générer
 
 ### Innovation Risk Mitigation

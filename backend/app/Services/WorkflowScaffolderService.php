@@ -52,7 +52,7 @@ class WorkflowScaffolderService
         $documentation = is_readable($docPath) ? (string) file_get_contents($docPath) : '';
 
         return <<<PROMPT
-You are a YAML workflow generator for the "xu-workflow" system.
+You are a YAML workflow generator for the "XuMaestro" system.
 Respond with ONLY a valid YAML block. No explanation, no prose, no markdown fences.
 
 ### CRITICAL RULES:

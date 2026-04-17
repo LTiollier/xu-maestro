@@ -39,7 +39,7 @@ so that je peux retrouver et consulter les artefacts d'un run précédent.
   - [x] Note : `$runPath` déclaré AVANT le `try` dans `execute()`, initialisé à `''`
 
 - [x] **T3 — Backend : `RunController::index()`** (AC 1, 7)
-  - [x] Scanner `File::directories(config('xu-workflow.runs_path'))` pour lister les dossiers runs
+  - [x] Scanner `File::directories(config('xu-maestro.runs_path'))` pour lister les dossiers runs
   - [x] Pour chaque dossier : lire `checkpoint.json` + `result.json` (si absent → skip le dossier)
   - [x] Filtrer les runs actifs : `if (cache()->has("run:{$runId}") || cache()->has("run:{$runId}:config")) { continue; }`
   - [x] Parser `createdAt` depuis le nom du dossier (format `YYYY-MM-DD-HHmmss`) avec `Carbon::createFromFormat('Y-m-d-His', basename($dir))`
@@ -123,9 +123,9 @@ so that je peux retrouver et consulter les artefacts d'un run précédent.
 ### §ÉTAT ACTUEL — Ne pas réinventer
 
 ```
-backend/config/xu-workflow.php
+backend/config/xu-maestro.php
   → runs_path = base_path('../runs') — chemin absolu vers le dossier runs/
-  → Utiliser config('xu-workflow.runs_path') dans les Controllers et Services
+  → Utiliser config('xu-maestro.runs_path') dans les Controllers et Services
 
 backend/app/Services/ArtifactService.php
   → initializeRun() : crée runs/YYYY-MM-DD-HHmm/ avec session.md, checkpoint.json, agents/

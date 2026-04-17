@@ -17,7 +17,7 @@ class RunController extends Controller
 {
     public function index(): AnonymousResourceCollection
     {
-        $runsPath = config('xu-workflow.runs_path');
+        $runsPath = config('xu-maestro.runs_path');
 
         if (! File::exists($runsPath)) {
             return RunHistoryResource::collection([]);
@@ -228,7 +228,7 @@ class RunController extends Controller
 
     private function findRunPath(string $runId): ?string
     {
-        $runsPath = config('xu-workflow.runs_path');
+        $runsPath = config('xu-maestro.runs_path');
         if (! File::exists($runsPath)) {
             return null;
         }

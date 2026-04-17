@@ -8,7 +8,7 @@ inputDocuments:
   - docs/planning-artifacts/research/technical-claude-gemini-cli-integration-research-2026-04-02.md
   - docs/brainstorming/brainstorming-session-2026-04-02-1000.md
 workflowType: 'architecture'
-project_name: 'xu-workflow'
+project_name: 'XuMaestro'
 user_name: 'Léo'
 date: '2026-04-02'
 ---
@@ -409,7 +409,7 @@ interface DriverInterface {
 ### Complete Project Directory Structure
 
 ```
-xu-workflow/                          ← racine du monorepo
+XuMaestro/                          ← racine du monorepo
 ├── .gitignore
 ├── README.md
 ├── workflows/                        ← YAML workflow files (source de vérité, versionnés)
@@ -498,7 +498,7 @@ xu-workflow/                          ← racine du monorepo
     │       ├── CliExecutionException.php
     │       └── InvalidJsonOutputException.php ← NFR7
     ├── config/
-    │   └── xu-workflow.php                  ← timeout par défaut, paths workflows/runs
+    │   └── xu-maestro.php                  ← timeout par défaut, paths workflows/runs
     ├── routes/
     │   └── api.php
     └── tests/
@@ -624,7 +624,7 @@ Implication : `SseStreamService` est supprimé comme service séparé. `SseContr
 
 Validation du contrat `{ step, status, output, next_action, errors }` dans `RunService` après chaque appel `DriverInterface::execute()`, avant propagation à l'agent suivant. Échec → `InvalidJsonOutputException` → `run.error` SSE émis.
 
-**Gap mineur résolu — `config/xu-workflow.php`**
+**Gap mineur résolu — `config/xu-maestro.php`**
 
 ```php
 return [

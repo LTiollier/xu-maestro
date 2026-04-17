@@ -13,7 +13,7 @@ class GeminiDriver implements DriverInterface
     {
         $command = 'gemini --prompt "" --output-format stream-json';
 
-        if (config('xu-workflow.yolo_mode')) {
+        if (config('xu-maestro.yolo_mode')) {
             $command .= ' --yolo';
         }
 

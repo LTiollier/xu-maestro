@@ -1,5 +1,5 @@
 name: "Sub workflow dev"
-project_path: "/Users/leoelmy/Projects/xu-workflow/helloWorld"
+project_path: "/Users/leoelmy/Projects/XuMaestro/helloWorld"
 agents:
   - id: traducteur
     engine: gemini-cli

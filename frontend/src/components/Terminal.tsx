@@ -46,15 +46,15 @@ export function Terminal() {
     ).length
     const hasQuestion = Object.values(agentStatuses).some(a => a.status === 'waiting_for_input')
 
-    let title = 'xu-workflow'
-    if (status === 'running' && hasQuestion) {
-      title = '🟡 xu-workflow'
+    let title = 'XuMaestro'
+    if (status === 'idle') {
+      title = '🟡 XuMaestro'
     } else if (status === 'running') {
-      title = `🟢 ${progressCount}/${total} · xu-workflow`
+      title = `🟢 ${progressCount}/${total} · XuMaestro`
     } else if (status === 'error') {
-      title = '🔴 xu-workflow'
+      title = '🔴 XuMaestro'
     } else if (status === 'completed') {
-      title = '🔵 xu-workflow'
+      title = '🔵 XuMaestro'
     }
 
     document.title = title

@@ -13,7 +13,7 @@ documentsUsed:
 # Implementation Readiness Assessment Report
 
 **Date:** 2026-04-03
-**Project:** xu-workflow
+**Project:** XuMaestro
 
 ---
 
@@ -413,4 +413,4 @@ Ce rapport a identifié **5 issues** (1 bloquante, 1 majeure, 3 mineures), toute
 
 ---
 
-*Assessment généré le 2026-04-03 — xu-workflow*
+*Assessment généré le 2026-04-03 — XuMaestro*

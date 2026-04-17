@@ -45,7 +45,7 @@ final class AgentContextBuilder
         if (isset($agent['system_prompt']) && $agent['system_prompt'] !== '') {
             $prompt = $agent['system_prompt'];
         } elseif (isset($agent['system_prompt_file']) && $agent['system_prompt_file'] !== '') {
-            $path = config('xu-workflow.prompts_path') . '/' . basename($agent['system_prompt_file']);
+            $path = config('xu-maestro.prompts_path') . '/' . basename($agent['system_prompt_file']);
             if (file_exists($path)) {
                 $content = file_get_contents($path);
                 if ($content !== false) {

@@ -61,7 +61,7 @@ so that le pipeline d'agents s'exécute de bout en bout sans intervention humain
 
 - [x] **T6 — Étendre `YamlService` avec `load(string $filename): array`** (prérequis : AC 1)
   - [x] Ajouter méthode `load(string $filename): array` dans `YamlService`
-  - [x] Chercher dans `config('xu-workflow.workflows_path') . '/' . $filename`
+  - [x] Chercher dans `config('xu-maestro.workflows_path') . '/' . $filename`
   - [x] Parser avec `Yaml::parseFile()` + appeler `$this->validate($data)`
   - [x] Lever `\InvalidArgumentException` si fichier introuvable ou YAML invalide
   - [x] Étendre `validate()` pour vérifier `project_path` (string non vide) — nécessaire pour NFR11
@@ -85,7 +85,7 @@ so that le pipeline d'agents s'exécute de bout en bout sans intervention humain
     - [x] Retourner le tableau décodé
   - [x] Méthode privée `resolveSystemPrompt(array $agent): string`
     - [x] Si `$agent['system_prompt']` → retourner tel quel
-    - [x] Sinon si `$agent['system_prompt_file']` → lire `config('xu-workflow.prompts_path') . '/' . $filename`
+    - [x] Sinon si `$agent['system_prompt_file']` → lire `config('xu-maestro.prompts_path') . '/' . $filename`
     - [x] Sinon → retourner `''`
 
 - [x] **T8 — Créer `RunResource`** (AC 9)
@@ -132,7 +132,7 @@ so that le pipeline d'agents s'exécute de bout en bout sans intervention humain
 - [x] [Review][Patch] `\InvalidArgumentException` renderer trop large — `YamlLoadException extends \InvalidArgumentException` créée; `YamlService` l'utilise; `bootstrap/app.php` catcher uniquement `YamlLoadException`. [bootstrap/app.php + YamlService.php]
 - [x] [Review][Patch] `validateJsonOutput` lève `TypeError` sur JSON scalaire — `!is_array($decoded)` ajouté après le null check. [RunService.php]
 - [x] [Review][Patch] `json_encode` retourne `false` sur UTF-8 invalide — `JSON_THROW_ON_ERROR` utilisé partout. [RunService.php]
-- [x] [Review][Patch] Pas de timeout sur `Process::run()` — `->timeout(config('xu-workflow.default_timeout', 120))` ajouté dans les deux drivers. [ClaudeDriver.php, GeminiDriver.php]
+- [x] [Review][Patch] Pas de timeout sur `Process::run()` — `->timeout(config('xu-maestro.default_timeout', 120))` ajouté dans les deux drivers. [ClaudeDriver.php, GeminiDriver.php]
 - [x] [Review][Patch] `resolveSystemPrompt` utilise `empty()` — remplacé par `isset() && !== ''`. [RunService.php]
 - [x] [Review][Patch] `file_get_contents` échec silencieux — vérification du retour `false` ajoutée. [RunService.php]
 - [x] [Review][Patch] `CliExecutionException` expose stderr brut en HTTP 500 — tronqué à 200 chars dans la réponse HTTP. [bootstrap/app.php]
@@ -174,7 +174,7 @@ public function execute(string $projectPath, string $systemPrompt, string $conte
 
 **`YamlService::loadAll()` existe** mais pas `load(string $filename)`. La méthode `validate()` ne vérifie pas `project_path`. Les deux sont à étendre.
 
-**`config/xu-workflow.php`** a déjà `runs_path` et `prompts_path` définis. Ne pas les redéfinir.
+**`config/xu-maestro.php`** a déjà `runs_path` et `prompts_path` définis. Ne pas les redéfinir.
 
 ---
 
@@ -303,7 +303,7 @@ private function resolveSystemPrompt(array $agent): string
 
     // Priorité 2 : fichier externe
     if (!empty($agent['system_prompt_file'])) {
-        $path = config('xu-workflow.prompts_path') . '/' . $agent['system_prompt_file'];
+        $path = config('xu-maestro.prompts_path') . '/' . $agent['system_prompt_file'];
         if (file_exists($path)) {
             return file_get_contents($path);
         }
@@ -323,7 +323,7 @@ Le YAML `example.yaml` utilise `system_prompt: "Tu es un agent de démonstration
 ```php
 public function load(string $filename): array
 {
-    $path = config('xu-workflow.workflows_path') . '/' . $filename;
+    $path = config('xu-maestro.workflows_path') . '/' . $filename;
 
     if (!file_exists($path)) {
         throw new \InvalidArgumentException("Workflow file not found: {$filename}");
@@ -554,7 +554,7 @@ public function test_invalid_json_throws_exception(): void
 
 **Story 1.3 (YamlService) :**
 - `YamlService` est dans `App\Services` — injection via constructeur fonctionne
-- `config('xu-workflow.workflows_path')` = `base_path('../workflows')` (résolu = `{repo-root}/workflows/`)
+- `config('xu-maestro.workflows_path')` = `base_path('../workflows')` (résolu = `{repo-root}/workflows/`)
 - `WorkflowResource` fait la transformation camelCase — même pattern pour `RunResource`
 - Tests feature : `WorkflowControllerTest` utilise `$this->getJson('/api/workflows')` — même pattern
 
@@ -602,7 +602,7 @@ cd backend && php artisan test
 - [Source: backend/app/Drivers/DriverInterface.php] — signature actuelle à corriger
 - [Source: backend/app/Services/YamlService.php] — méthodes existantes à étendre
 - [Source: backend/app/Providers/AppServiceProvider.php] — binding DI à ajouter
-- [Source: backend/config/xu-workflow.php] — runs_path et prompts_path déjà définis
+- [Source: backend/config/xu-maestro.php] — runs_path et prompts_path déjà définis
 - [Source: docs/implementation-artifacts/1-5-*.md] — patterns de code établis, learnings
 
 ## Dev Agent Record

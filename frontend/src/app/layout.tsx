@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "xu-workflow",
-  description: "AI agent workflow orchestrator",
+  title: "XuMaestro",
+  description: "AI Agent Workflow Orchestrator",
 };
 
 export default function RootLayout({

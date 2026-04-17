@@ -1,4 +1,4 @@
-# Spécification UI : xu-workflow V2 "Split Dashboard"
+# Spécification UI : XuMaestro V2 "Split Dashboard"
 
 ## 1. Vision et Objectifs
 L'interface abandonne le paradigme du diagramme de flux (nœuds mobiles) au profit d'un **tableau de bord à double panneau fixe**. L'objectif est de fournir une lecture linéaire, prévisible et sans distraction (pas de zoom, pas de drag), où le terminal est l'acteur principal.

@@ -411,7 +411,7 @@ cd frontend && npm run dev        # port 3000
 - `symfony/yaml 7.x` installé dans le backend
 - `YamlService.loadAll()` exclut silencieusement les YAML invalides
 - `WorkflowResource` transforme en camelCase — les champs frontend sont `name`, `file`, `agents[].id`, `agents[].engine`, `agents[].timeout`
-- `config('xu-workflow.default_timeout')` = 120s pour les agents sans `timeout` explicite
+- `config('xu-maestro.default_timeout')` = 120s pour les agents sans `timeout` explicite
 
 ---
 

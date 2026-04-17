@@ -25,7 +25,7 @@
 - **CORS non configuré** — Laravel `config/cors.php` non modifié. Pas nécessaire en dev local (proxy Next.js gère la séparation), mais à configurer pour tout déploiement non-localhost.
 - **php artisan serve single-thread** — Le serveur de développement Laravel ne gère pas les requêtes concurrentes. Non-bloquant pour le dev local, mais à considérer si tests concurrents ou Octane pour prod.
 - **Proxy Next.js sans timeout configurable** — Les rewrites Next.js n'exposent pas de timeout configurable. Tout run bloqué côté backend bloquera le fetch frontend jusqu'au timeout browser. À adresser via des timeouts serveur-side dans Laravel pour Epic 2.
-- **default_timeout non enforcé dans DriverInterface** — La config `xu-workflow.default_timeout` existe mais l'interface `DriverInterface::execute()` n'a pas de paramètre timeout explicite. Chaque driver devra lire la config manuellement. À formaliser lors de l'implémentation Story 2.1.
+- **default_timeout non enforcé dans DriverInterface** — La config `xu-maestro.default_timeout` existe mais l'interface `DriverInterface::execute()` n'a pas de paramètre timeout explicite. Chaque driver devra lire la config manuellement. À formaliser lors de l'implémentation Story 2.1.
 - **Tokens d'état agent manquants (cancelled, queued, retrying)** — Seuls idle/working/done/error définis. Les états futurs nécessiteront un ajout dans `globals.css @theme inline`. À faire lors des stories qui introduisent ces états.
 
 ## Deferred from: code review of 1-2-design-system-tokens-couleur-dark-mode-et-layout-principal (2026-04-04)
@@ -73,7 +73,7 @@
 - **TOCTOU dans `destroy()`** — `cache()->has()` puis `cache()->put()` ne sont pas atomiques. Un run terminant entre les deux appels pose un flag orphelin. Acceptable MVP (finally block nettoie dans tous les cas). À adresser via opération atomique (Lua script Redis ou lock) si la concurrence devient réelle.
 - **Pas d'auth/rate-limit sur `DELETE /runs/{id}`** — Route ouverte intentionnellement pour MVP localhost. À sécuriser avant tout déploiement réseau (middleware auth + throttle), cohérent avec la décision prise pour `POST /runs`.
 - **Run ID exposé dans le message 404** — `"Run not found or already completed: {$id}"` répercute l'ID fourni par le client. Pas d'injection possible (UUID validé par le routeur), mais peut faciliter l'énumération en environnement multi-user. À filtrer si authentification ajoutée.
-- **`(int) config(...)` fragile si valeur null** — `(int) null === 0`, ce qui passerait silencieusement un timeout de 0 à `Process::timeout(0)` (désactivation totale). À remplacer par `(int) config(...) ?: 120` ou validation dans `config/xu-workflow.php`.
+- **`(int) config(...)` fragile si valeur null** — `(int) null === 0`, ce qui passerait silencieusement un timeout de 0 à `Process::timeout(0)` (désactivation totale). À remplacer par `(int) config(...) ?: 120` ou validation dans `config/xu-maestro.php`.
 - **`timeout: "60"` (string YAML) non géré** — `isset($agent['timeout']) && is_int($agent['timeout'])` rejette les strings numériques. Le Symfony Yaml parser peut retourner des ints pour les valeurs sans guillemets, mais les guillemets (`timeout: "60"`) produiront une string. À documenter dans la spec YAML ou ajouter `is_numeric()` + cast.
 
 ## Deferred from: code review of 2-3-contexte-partage-inter-agents-et-artefacts-de-run (2026-04-06)

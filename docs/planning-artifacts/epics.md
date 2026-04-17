@@ -8,11 +8,11 @@ inputDocuments:
   - docs/planning-artifacts/ux-design-specification.md
 ---
 
-# xu-workflow - Epic Breakdown
+# XuMaestro - Epic Breakdown
 
 ## Overview
 
-This document provides the complete epic and story breakdown for xu-workflow, decomposing the requirements from the PRD, UX Design if it exists, and Architecture requirements into implementable stories.
+This document provides the complete epic and story breakdown for XuMaestro, decomposing the requirements from the PRD, UX Design if it exists, and Architecture requirements into implementable stories.
 
 ## Requirements Inventory
 
@@ -149,7 +149,7 @@ L'utilisateur peut charger des workflows YAML depuis le filesystem, les parcouri
 
 As a développeur,
 I want avoir les projets Next.js et Laravel initialisés avec leurs starters et configurés pour communiquer,
-So that j'ai la base technique pour construire xu-workflow.
+So that j'ai la base technique pour construire xu-maestro.
 
 **Acceptance Criteria :**
 

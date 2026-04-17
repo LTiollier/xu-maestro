@@ -9,7 +9,7 @@ inputDocuments:
   - docs/brainstorming/brainstorming-session-2026-04-02-1000.md
 ---
 
-# UX Design Specification — xu-workflow
+# UX Design Specification — XuMaestro
 
 **Author:** Léo
 **Date:** 2026-04-03
@@ -20,7 +20,7 @@ inputDocuments:
 
 ### Vision Projet
 
-xu-workflow est un orchestrateur d'agents IA CLI local, piloté par des fichiers YAML déclaratifs. Il permet à un développeur solo de définir une équipe d'agents spécialisés (Claude Code, Gemini CLI) exécutés en pipeline séquentiel, avec un contexte ciblé par agent. L'application s'installe en localhost, utilisée exclusivement sur Chrome desktop.
+XuMaestro est un orchestrateur d'agents IA CLI local, piloté par des fichiers YAML déclaratifs. Il permet à un développeur solo de définir une équipe d'agents spécialisés (Claude Code, Gemini CLI) exécutés en pipeline séquentiel, avec un contexte ciblé par agent. L'application s'installe en localhost, utilisée exclusivement sur Chrome desktop.
 
 Problème résolu : un agent unique sur un contexte partagé grandissant dégrade en qualité sur les tâches complexes — la solution est architecturale, pas un changement de modèle. Chaque agent reçoit exactement ce dont il a besoin, dans l'ordre imposé par le développeur via YAML.
 
@@ -44,7 +44,7 @@ Problème résolu : un agent unique sur un contexte partagé grandissant dégrad
 
 ### Opportunités de Design
 
-1. **Le diagramme comme interface principale** — contrairement aux outils concurrents (logs terminal, UI drag-and-drop), xu-workflow peut faire du diagramme d'agents le centre de gravité de toute l'expérience. Un coup d'œil suffit pour comprendre l'état complet du run.
+1. **Le diagramme comme interface principale** — contrairement aux outils concurrents (logs terminal, UI drag-and-drop), XuMaestro peut faire du diagramme d'agents le centre de gravité de toute l'expérience. Un coup d'œil suffit pour comprendre l'état complet du run.
 
 2. **Gamification évolutive** — le MVP commence avec un diagramme classique (nœuds/arêtes), mais l'architecture visuelle peut progressivement évoluer vers un open space pixel art avec personnages animés (Phase 3) sans casser l'UX existante.
 
@@ -56,7 +56,7 @@ Problème résolu : un agent unique sur un contexte partagé grandissant dégrad
 
 ### Expérience Définissante
 
-L'action principale de xu-workflow est **lancer un run**. Le développeur écrit un brief textuel libre, clique Lancer, et observe son équipe d'agents travailler de façon autonome jusqu'à la complétion — sans intervenir, sans lire des logs, sans surveiller un terminal. La valeur est dans l'autonomie : le workflow s'exécute, le développeur peut se concentrer sur autre chose ou simplement observer.
+L'action principale de XuMaestro est **lancer un run**. Le développeur écrit un brief textuel libre, clique Lancer, et observe son équipe d'agents travailler de façon autonome jusqu'à la complétion — sans intervenir, sans lire des logs, sans surveiller un terminal. La valeur est dans l'autonomie : le workflow s'exécute, le développeur peut se concentrer sur autre chose ou simplement observer.
 
 ### Stratégie Plateforme
 
@@ -74,9 +74,9 @@ L'action principale de xu-workflow est **lancer un run**. Le développeur écrit
 
 ### Moments de Succès Critiques
 
-1. **Premier run complet sans intervention** — c'est la définition littérale du succès selon la PRD. 2+ agents séquentiels qui s'enchaînent sans blocage. Si ce moment arrive sans accroc, la valeur de xu-workflow est démontrée.
+1. **Premier run complet sans intervention** — c'est la définition littérale du succès selon la PRD. 2+ agents séquentiels qui s'enchaînent sans blocage. Si ce moment arrive sans accroc, la valeur de XuMaestro est démontrée.
 
-2. **La première transition animée entre agents** — le moment où l'utilisateur voit visuellement le contexte "passer" d'un agent à l'autre dans le diagramme. C'est ici que xu-workflow devient différent d'un script terminal.
+2. **La première transition animée entre agents** — le moment où l'utilisateur voit visuellement le contexte "passer" d'un agent à l'autre dans le diagramme. C'est ici que XuMaestro devient différent d'un script terminal.
 
 3. **Le retry partiel après erreur** — timeout déclenché → alerte localisée sur le nœud → retry depuis le bon checkpoint → reprise du workflow. Ce moment valide la robustesse et crée de la confiance dans l'outil.
 
@@ -152,7 +152,7 @@ DA dense mais jamais surchargée — beaucoup d'info, parfaitement hiérarchisé
 
 ### Patterns UX Transférables
 
-| Pattern | Source | Application xu-workflow |
+| Pattern | Source | Application XuMaestro |
 |---|---|---|
 | Vue pipeline → état par nœud | GitHub Actions + Jenkins | Diagramme avec états visuels immédiats par agent |
 | Drill-down accessible | GitHub Actions | Sidebar `.md` comme "logs du job" — accessible sans quitter la vue principale |
@@ -163,7 +163,7 @@ DA dense mais jamais surchargée — beaucoup d'info, parfaitement hiérarchisé
 
 ### Anti-Patterns à Éviter
 
-- **Logs comme vue principale** (Jenkins sans stage view) — les logs sont le détail, pas la vue principale dans xu-workflow
+- **Logs comme vue principale** (Jenkins sans stage view) — les logs sont le détail, pas la vue principale dans XuMaestro
 - **Couleurs décoratives sans sens** — chaque couleur signifie un état précis, aucune couleur purement esthétique
 - **Animations lourdes** — les transitions doivent être rapides et lisibles, pas spectaculaires
 - **Modales intrusives** — les infos qui peuvent être inline (bulles, badges) ne déclenchent pas de modale
@@ -268,7 +268,7 @@ Pas déclencher un script — voir en temps réel, visuellement, chaque agent re
 
 ### 2.2 Modèle Mental Utilisateur
 
-L'utilisateur arrive avec l'habitude de Claude Code solo : un prompt long, une attente, le risque de dérailler à mi-chemin. Le modèle mental importé dans xu-workflow : *"je confie une mission à une équipe, pas à un individu"*. Chaque agent a un rôle précis et un contexte propre. xu-workflow rend ce découpage visible au lieu de le cacher dans un terminal.
+L'utilisateur arrive avec l'habitude de Claude Code solo : un prompt long, une attente, le risque de dérailler à mi-chemin. Le modèle mental importé dans XuMaestro : *"je confie une mission à une équipe, pas à un individu"*. Chaque agent a un rôle précis et un contexte propre. XuMaestro rend ce découpage visible au lieu de le cacher dans un terminal.
 
 Frustrations du modèle précédent résolues :
 - **Opacité** → bulles SSE + diagramme d'états en temps réel
@@ -316,7 +316,7 @@ Frustrations du modèle précédent résolues :
 
 ```mermaid
 flowchart TD
-    A[Ouvre xu-workflow] --> B[Sélectionne workflow YAML\ndropdown topbar]
+    A[Ouvre XuMaestro] --> B[Sélectionne workflow YAML\ndropdown topbar]
     B --> C[Diagramme se reconfigure\ncards agents en séquence]
     C --> D[Écrit brief dans textarea\nbarre de lancement en bas]
     D --> E[Clique Lancer]
@@ -355,7 +355,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A[Crée workflows/foo.yaml\ndans son éditeur hors app] --> B[Revient dans xu-workflow]
+    A[Crée workflows/foo.yaml\ndans son éditeur hors app] --> B[Revient dans XuMaestro]
     B --> C[Clique Recharger workflows\nbouton topbar]
     C --> D[GET /api/workflows\nréscan dossier workflows/]
     D --> E[Dropdown mis à jour\nnouveau workflow visible]
@@ -392,7 +392,7 @@ flowchart TD
 
 ### Composants shadcn — Couverture Directe
 
-| Composant shadcn | Usage xu-workflow |
+| Composant shadcn | Usage XuMaestro |
 |---|---|
 | `Card` | Base de chaque `AgentCard` |
 | `Badge` | État agent (idle / working / done / error) |

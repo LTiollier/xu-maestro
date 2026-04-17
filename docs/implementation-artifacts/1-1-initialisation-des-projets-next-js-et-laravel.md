@@ -6,7 +6,7 @@ Status: done
 
 As a développeur,
 I want avoir les projets Next.js et Laravel initialisés avec leurs starters et configurés pour communiquer,
-So that j'ai la base technique pour construire xu-workflow.
+So that j'ai la base technique pour construire xu-maestro.
 
 ## Acceptance Criteria
 
@@ -40,7 +40,7 @@ So that j'ai la base technique pour construire xu-workflow.
 - [x] **T3 — Initialiser le backend Laravel** (AC: 2, 6)
   - [x] Exécuter `laravel new backend --no-interaction` depuis la racine du projet
   - [x] Créer les dossiers manquants : `app/Services/`, `app/Drivers/`, `app/Events/`, `app/Listeners/`
-  - [x] Créer `backend/config/xu-workflow.php` (voir Dev Notes §Config Laravel)
+  - [x] Créer `backend/config/xu-maestro.php` (voir Dev Notes §Config Laravel)
 
 - [x] **T4 — Configurer AppServiceProvider** (AC: 7)
   - [x] Dans `backend/app/Providers/AppServiceProvider.php`, ajouter `JsonResource::withoutWrapping()` dans `boot()`
@@ -62,10 +62,10 @@ So that j'ai la base technique pour construire xu-workflow.
 - [x] [Review][Decision] NEXT_PUBLIC_API_URL défini dans .env.local mais ignoré dans next.config.ts — patché : BACKEND_URL env var dans next.config.ts
 - [x] [Review][Decision] DriverInterface::execute() retourne string brut — fermé : string correct pour transport brut, erreurs via exceptions
 - [x] [Review][Decision] DriverInterface::kill(int $pid) suppose un modèle PID — patché : renommé cancel(string $jobId)
-- [x] [Review][Patch] base_path('../../workflows') résout en dehors du projet — corrigé en base_path('../workflows') [backend/config/xu-workflow.php]
+- [x] [Review][Patch] base_path('../../workflows') résout en dehors du projet — corrigé en base_path('../workflows') [backend/config/xu-maestro.php]
 - [x] [Review][Patch] shadcn listé dans dependencies au lieu de devDependencies — déplacé en devDependencies [frontend/package.json]
 - [x] [Review][Patch] Script lint : "eslint" sans argument → remplacé par "next lint" [frontend/package.json]
-- [x] [Review][Patch] default_timeout: 120 — commentaire // seconds ajouté [backend/config/xu-workflow.php]
+- [x] [Review][Patch] default_timeout: 120 — commentaire // seconds ajouté [backend/config/xu-maestro.php]
 - [x] [Review][Defer] CORS non configuré côté Laravel — production concern, pas dev [backend] — deferred, pre-existing
 - [x] [Review][Defer] php artisan serve single-thread — dev uniquement, pas de concurrent requests issue en dev [backend] — deferred, pre-existing
 - [x] [Review][Defer] Proxy Next.js sans timeout configurable — production concern [frontend/next.config.ts] — deferred, pre-existing
@@ -77,7 +77,7 @@ So that j'ai la base technique pour construire xu-workflow.
 ### Commandes d'initialisation exactes
 
 ```bash
-# Depuis la racine xu-workflow/
+# Depuis la racine XuMaestro/
 npx create-next-app@latest frontend --typescript --tailwind --eslint --no-git
 laravel new backend --no-interaction
 ```
@@ -149,7 +149,7 @@ export default config;
 
 ---
 
-### §Config Laravel — config/xu-workflow.php
+### §Config Laravel — config/xu-maestro.php
 
 ```php
 <?php
@@ -264,7 +264,7 @@ public function boot(): void
 ### Structure de dossiers finale attendue
 
 ```
-xu-workflow/
+XuMaestro/
 ├── frontend/
 │   ├── src/
 │   │   ├── app/               ← routing Next.js (App Router)
@@ -289,7 +289,7 @@ xu-workflow/
     │   ├── Events/            ← vide pour l'instant
     │   └── Listeners/         ← vide pour l'instant
     ├── config/
-    │   └── xu-workflow.php
+    │   └── xu-maestro.php
     └── app/Providers/AppServiceProvider.php  ← withoutWrapping() dans boot()
 ```
 
@@ -354,12 +354,12 @@ claude-sonnet-4-6
 - shadcn/ui 4.1.2 installé avec 10 composants : card, badge, button, dialog, separator, textarea, select, scroll-area, sheet, tooltip
 - Tokens agent sémantiques ajoutés dans globals.css (format Tailwind v4 @theme inline) : agent-idle/working/done/error
 - Dark mode forcé via className="dark" sur <html>, TooltipProvider wrappant le body
-- layout.tsx mis à jour : titre "xu-workflow", lang="fr", dark class
+- layout.tsx mis à jour : titre "XuMaestro", lang="fr", dark class
 - Laravel 13.3.0 initialisé avec SQLite par défaut, migrations appliquées (users, cache, jobs)
 - AppServiceProvider::boot() configure JsonResource::withoutWrapping()
 - DriverInterface scaffoldée avec execute(string $prompt, array $options): string et kill(int $pid): void
 - ClaudeDriver et GeminiDriver implémentent DriverInterface et lèvent RuntimeException('Not implemented') + TODO Epic 2 - Story 2.1
-- config/xu-workflow.php créé et validé par php artisan config:show
+- config/xu-maestro.php créé et validé par php artisan config:show
 - Tests Laravel : 2 tests passés (0 régression)
 - Build Next.js : compilation TypeScript réussie, 0 erreur
 
@@ -369,7 +369,7 @@ claude-sonnet-4-6
 - frontend/next.config.ts (proxy /api/* → localhost:8000)
 - frontend/.env.local (NEXT_PUBLIC_API_URL)
 - frontend/src/app/globals.css (tokens agent, dark mode)
-- frontend/src/app/layout.tsx (dark class, TooltipProvider, titre xu-workflow)
+- frontend/src/app/layout.tsx (dark class, TooltipProvider, titre XuMaestro)
 - frontend/src/components/ (nouveau dossier)
 - frontend/src/components/ui/badge.tsx (shadcn)
 - frontend/src/components/ui/button.tsx (shadcn)
@@ -393,4 +393,4 @@ claude-sonnet-4-6
 - backend/app/Services/ (nouveau dossier vide)
 - backend/app/Events/ (nouveau dossier vide)
 - backend/app/Listeners/ (nouveau dossier vide)
-- backend/config/xu-workflow.php (nouveau)
+- backend/config/xu-maestro.php (nouveau)

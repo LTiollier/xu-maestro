@@ -266,7 +266,7 @@ class RunServiceTest extends TestCase
         mkdir($promptsDir, 0755, true);
         file_put_contents($promptsDir . '/my-prompt.md', 'Contenu du prompt depuis fichier.');
 
-        config(['xu-workflow.prompts_path' => $promptsDir]);
+        config(['xu-maestro.prompts_path' => $promptsDir]);
 
         $workflow = $this->singleAgentWorkflow(['system_prompt_file' => 'my-prompt.md']);
         $this->mockYaml->method('load')->willReturn($workflow);

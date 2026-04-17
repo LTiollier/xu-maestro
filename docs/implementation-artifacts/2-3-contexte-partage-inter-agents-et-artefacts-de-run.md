@@ -91,7 +91,7 @@ public function __construct(
 
 ### §Chemin du dossier run
 
-Le chemin de base vient de `config('xu-workflow.runs_path')` = `base_path('../runs')` (défini dans `config/xu-workflow.php`).
+Le chemin de base vient de `config('xu-maestro.runs_path')` = `base_path('../runs')` (défini dans `config/xu-maestro.php`).
 
 Format du dossier : `YYYY-MM-DD-HHmm` → `now()->format('Y-m-d-Hi')` (ex : `2026-04-06-1430`)
 
@@ -99,7 +99,7 @@ Format du dossier : `YYYY-MM-DD-HHmm` → `now()->format('Y-m-d-Hi')` (ex : `202
 public function initializeRun(string $runId, string $workflowFile, string $brief): string
 {
     $folderName = now()->format('Y-m-d-Hi');
-    $runPath = config('xu-workflow.runs_path') . '/' . $folderName;
+    $runPath = config('xu-maestro.runs_path') . '/' . $folderName;
 
     File::makeDirectory($runPath . '/agents', 0755, true, true);  // true = recursive, true = force (exists ok)
 
@@ -254,7 +254,7 @@ public function toArray($request): array
 }
 ```
 
-`runFolder` est le chemin absolu du dossier (ex : `/Users/leoelmy/Projects/xu-workflow/runs/2026-04-06-1430`). Il sera utilisé dans l'événement SSE `run.completed` (story 2.4) et la modale de fin de run (story 2.7b).
+`runFolder` est le chemin absolu du dossier (ex : `/Users/leoelmy/Projects/XuMaestro/runs/2026-04-06-1430`). Il sera utilisé dans l'événement SSE `run.completed` (story 2.4) et la modale de fin de run (story 2.7b).
 
 ### §Fichiers à créer/modifier
 
@@ -315,7 +315,7 @@ class ArtifactServiceTest extends TestCase
     {
         parent::setUp();
         $this->tmpBase = sys_get_temp_dir() . '/artifact-test-' . uniqid();
-        config(['xu-workflow.runs_path' => $this->tmpBase]);
+        config(['xu-maestro.runs_path' => $this->tmpBase]);
         $this->service = new ArtifactService();
     }
 
@@ -337,7 +337,7 @@ class ArtifactServiceTest extends TestCase
 | Créer `CheckpointService` séparé dans cette story | `ArtifactService` gère les checkpoints — `CheckpointService` arrivera en Epic 3 |
 | Binder `ArtifactService` dans `AppServiceProvider` | Auto-résolution Laravel — pas de binding nécessaire |
 | Utiliser `mkdir()` directement | Utiliser `File::makeDirectory($path, 0755, true, true)` |
-| Écrire dans `storage/app/runs/` | Écrire dans `config('xu-workflow.runs_path')` = `base_path('../runs')` |
+| Écrire dans `storage/app/runs/` | Écrire dans `config('xu-maestro.runs_path')` = `base_path('../runs')` |
 | Oublier la sanitisation dans `writeCheckpoint()` | Sanitiser `json_encode($data)` avant `File::put()` |
 | Modifier `DriverInterface` | La signature `$context: string` reste inchangée |
 | Casser les 40 tests existants | Mock `ArtifactService` dans `RunServiceTest`, tests verts |
@@ -385,7 +385,7 @@ ls ../runs/$(ls -t ../runs | head -1)/agents/
 - [Source: docs/planning-artifacts/architecture.md#Data-Architecture] — structure `runs/`, schéma checkpoint.json complet
 - [Source: docs/planning-artifacts/architecture.md#Project-Structure] — `ArtifactService.php` dans `app/Services/`, `CheckpointService.php` pour Epic 3
 - [Source: docs/planning-artifacts/architecture.md#Enforcement-Guidelines] — `sanitizeEnvCredentials` avant Storage::put()
-- [Source: backend/config/xu-workflow.php] — `runs_path = base_path('../runs')`
+- [Source: backend/config/xu-maestro.php] — `runs_path = base_path('../runs')`
 - [Source: backend/app/Services/RunService.php] — implémentation actuelle à étendre (inject ArtifactService)
 - [Source: backend/app/Http/Resources/RunResource.php] — à étendre avec `runFolder`
 - [Source: docs/implementation-artifacts/2-2-timeout-par-tache-et-annulation-de-run.md#Dev-Notes] — patterns RunService, injection, finally block

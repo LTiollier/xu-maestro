@@ -88,13 +88,13 @@ class CheckpointServiceTest extends TestCase
 
     public function test_write_does_not_redact_non_credential_values(): void
     {
-        $_ENV['APP_NAME'] = 'xu-workflow-value';
+        $_ENV['APP_NAME'] = 'xu-maestro-value';
 
-        $this->service->write($this->tmpDir, $this->makeData(['brief' => 'Brief xu-workflow-value']));
+        $this->service->write($this->tmpDir, $this->makeData(['brief' => 'Brief xu-maestro-value']));
 
         $raw = File::get($this->tmpDir . '/checkpoint.json');
         $this->assertStringNotContainsString('[REDACTED]', $raw);
-        $this->assertStringContainsString('xu-workflow-value', $raw);
+        $this->assertStringContainsString('xu-maestro-value', $raw);
 
         unset($_ENV['APP_NAME']);
     }

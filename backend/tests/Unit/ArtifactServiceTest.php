@@ -18,7 +18,7 @@ class ArtifactServiceTest extends TestCase
     {
         parent::setUp();
         $this->tmpBase = sys_get_temp_dir() . '/artifact-test-' . uniqid();
-        config(['xu-workflow.runs_path' => $this->tmpBase]);
+        config(['xu-maestro.runs_path' => $this->tmpBase]);
         $this->service = new ArtifactService(new CheckpointService());
     }
 
@@ -178,16 +178,16 @@ class ArtifactServiceTest extends TestCase
 
     public function test_sanitize_does_not_redact_non_credential_vars(): void
     {
-        $_ENV['APP_NAME'] = 'xu-workflow-app';  // nom ne contient pas key|token|etc.
+        $_ENV['APP_NAME'] = 'xu-maestro-app';  // nom ne contient pas key|token|etc.
 
         $runPath = $this->service->initializeRun('run-uuid', 'example.yaml', 'Brief');
 
-        $content = 'Output with xu-workflow-app in it';
+        $content = 'Output with xu-maestro-app in it';
         $this->service->appendAgentOutput($runPath, 'agent-1', $content);
 
         $written = file_get_contents($runPath . '/agents/agent-1.md');
         $this->assertStringNotContainsString('[REDACTED]', $written);
-        $this->assertStringContainsString('xu-workflow-app', $written);
+        $this->assertStringContainsString('xu-maestro-app', $written);
 
         unset($_ENV['APP_NAME']);
     }

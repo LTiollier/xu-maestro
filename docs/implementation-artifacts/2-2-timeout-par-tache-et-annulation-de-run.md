@@ -18,7 +18,7 @@ so that aucun run ne bloque indéfiniment et je garde le contrôle.
 3. **When** `DELETE /api/runs/{id}` est appelé pendant un run actif — **Then** le run est marqué `cancelled` et aucun agent suivant n'est spawné ; les ressources cache sont libérées (FR13, FR26) *(Note : l'interruption d'un agent en cours d'exécution requiert le mode SSE — Story 2.4)*
 4. **Given** `DELETE /api/runs/{id}` appelé — **Then** l'état du run passe à `cancelled` (registre cache) et la réponse est HTTP 202
 5. **Given** aucun run actif avec l'`{id}` donné — **When** `DELETE /api/runs/{id}` est appelé — **Then** HTTP 404 `{ message, code: "RUN_NOT_FOUND" }`
-6. **Given** un agent YAML sans champ `timeout` — **Then** le driver utilise `config('xu-workflow.default_timeout', 120)` (secondes)
+6. **Given** un agent YAML sans champ `timeout` — **Then** le driver utilise `config('xu-maestro.default_timeout', 120)` (secondes)
 7. **Given** un agent YAML avec `timeout: 60` — **Then** le driver utilise 60 secondes (pas le défaut global)
 8. **Given** un timeout atteint — **Then** `AgentTimeoutException` est levée et exposée en HTTP 504 `{ message, code: "AGENT_TIMEOUT" }`
 9. **Given** un run annulé via DELETE — **Then** `RunCancelledException` est levée et exposée en HTTP 409 `{ message, code: "RUN_CANCELLED" }`
@@ -52,7 +52,7 @@ so that aucun run ne bloque indéfiniment et je garde le contrôle.
 
 - [x] **T6 — Mettre à jour `RunService`** (AC 1, 2, 3, 4, 6, 7, 8, 9)
   - [x] Stocker `$runId` dans le cache à l'entrée : `cache()->put("run:{$runId}", ['status' => 'running'], 3600)`
-  - [x] Résoudre le timeout par agent : `isset($agent['timeout']) && is_int($agent['timeout']) && $agent['timeout'] > 0 ? $agent['timeout'] : (int) config('xu-workflow.default_timeout', 120)`
+  - [x] Résoudre le timeout par agent : `isset($agent['timeout']) && is_int($agent['timeout']) && $agent['timeout'] > 0 ? $agent['timeout'] : (int) config('xu-maestro.default_timeout', 120)`
   - [x] Passer `$timeout` à `$this->driver->execute(..., $timeout)`
   - [x] Dans le catch `CliExecutionException` : re-throw avec `$agentId` (existant)
   - [x] Ajouter catch `ProcessTimedOutException` → `throw new AgentTimeoutException($agentId, $timeout)`
@@ -70,7 +70,7 @@ so that aucun run ne bloque indéfiniment et je garde le contrôle.
 - [x] **T9 — Tests unitaires timeout** (couverture AC 6, 7, 8)
   - [x] Créer `backend/tests/Unit/RunServiceTimeoutTest.php`
   - [x] Tester : driver lève `ProcessTimedOutException` → `RunService` lève `AgentTimeoutException` avec le bon `$agentId` et `$timeout`
-  - [x] Tester : YAML agent sans `timeout` → driver reçoit `config('xu-workflow.default_timeout', 120)`
+  - [x] Tester : YAML agent sans `timeout` → driver reçoit `config('xu-maestro.default_timeout', 120)`
   - [x] Tester : YAML agent avec `timeout: 45` → driver reçoit 45
   - [x] Tester : flag annulation positionné → `RunService` lève `RunCancelledException` avant le 2ème agent
   - [x] Tester : `finally` nettoie le cache dans tous les cas (succès, timeout, annulation)
@@ -92,7 +92,7 @@ so that aucun run ne bloque indéfiniment et je garde le contrôle.
 - [x] [Review][Defer] TOCTOU dans destroy() — has() + put() non-atomique : le run peut se terminer entre les deux appels, renvoyant 202 sur un run déjà complété. Inhérent au cache fichier sans CAS. [RunController.php:destroy()] — deferred, inherent file-cache limitation, acceptable MVP
 - [x] [Review][Defer] Pas d'authentification sur DELETE /runs/{id} — même situation que POST /runs, concern applicatif global. [routes/api.php] — deferred, app-level concern, consistent with existing routes
 - [x] [Review][Defer] Run ID renvoyé dans le message 404 — contenu user-supplied non tronqué dans la réponse JSON. Risque minimal en API JSON locale. [RunController.php:destroy()] — deferred, low risk local JSON API
-- [x] [Review][Defer] Cast (int) config() peut produire 0 sur valeur non-numérique — cas marginal, config hardcodée comme int dans xu-workflow.php. [RunService.php] — deferred, config is hardcoded int
+- [x] [Review][Defer] Cast (int) config() peut produire 0 sur valeur non-numérique — cas marginal, config hardcodée comme int dans xu-maestro.php. [RunService.php] — deferred, config is hardcoded int
 - [x] [Review][Defer] `timeout: "60"` (string YAML) utilise silencieusement le défaut global — YAML standard utilise des entiers non-quotés, cas marginal auteur workflow. [RunService.php] — deferred, YAML edge case, no MVP impact
 
 ## Dev Notes
@@ -110,7 +110,7 @@ public function execute(string $projectPath, string $systemPrompt, string $conte
 public function kill(int $pid): void;
 ```
 
-**IMPORTANT :** `ClaudeDriver` et `GeminiDriver` hardcodent actuellement `->timeout(config('xu-workflow.default_timeout', 120))`. Ce config call est à SUPPRIMER des drivers — c'est désormais `RunService` qui résout le timeout et le passe.
+**IMPORTANT :** `ClaudeDriver` et `GeminiDriver` hardcodent actuellement `->timeout(config('xu-maestro.default_timeout', 120))`. Ce config call est à SUPPRIMER des drivers — c'est désormais `RunService` qui résout le timeout et le passe.
 
 ### §Résolution du timeout par agent dans `RunService`
 
@@ -125,7 +125,7 @@ foreach ($workflow['agents'] as $agent) {
 
     $timeout = isset($agent['timeout']) && is_int($agent['timeout']) && $agent['timeout'] > 0
         ? $agent['timeout']
-        : (int) config('xu-workflow.default_timeout', 120);
+        : (int) config('xu-maestro.default_timeout', 120);
 
     $systemPrompt = $this->resolveSystemPrompt($agent);
 
@@ -290,7 +290,7 @@ Cette limitation est **attendue et documentée** — la story 2.4 transformera l
 
 | ❌ Interdit | ✅ Correct |
 |---|---|
-| `->timeout(config('xu-workflow.default_timeout', 120))` dans ClaudeDriver | Utiliser `$timeout` passé en paramètre |
+| `->timeout(config('xu-maestro.default_timeout', 120))` dans ClaudeDriver | Utiliser `$timeout` passé en paramètre |
 | Ignorer `ProcessTimedOutException` | La catcher dans RunService → `AgentTimeoutException` |
 | Ne pas enregistrer le run dans le cache | `cache()->put("run:{$runId}", ...)` au début de `execute()` |
 | Oublier le `finally` | Bloc `finally` = nettoyage cache garanti (NFR4) |
@@ -348,7 +348,7 @@ curl -X DELETE http://localhost:8000/api/runs/nonexistent-uuid | python3 -m json
 - [Source: backend/app/Drivers/DriverInterface.php] — signature actuelle à étendre
 - [Source: backend/app/Services/RunService.php] — implémentation actuelle à étendre
 - [Source: backend/app/Http/Controllers/RunController.php] — store() existant, destroy() à ajouter
-- [Source: backend/config/xu-workflow.php] — default_timeout = 120s
+- [Source: backend/config/xu-maestro.php] — default_timeout = 120s
 - [Source: workflows/example.yaml] — timeout: 60 déjà dans le YAML d'exemple
 - [Source: docs/implementation-artifacts/2-1-*.md#Review-Findings] — patterns établis, CliExecutionException re-throw pattern
 

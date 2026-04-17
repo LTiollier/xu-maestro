@@ -65,7 +65,7 @@ final class SubWorkflowExecutor
 
                     $timeout = isset($subAgent['timeout']) && is_int($subAgent['timeout']) && $subAgent['timeout'] > 0
                         ? $subAgent['timeout']
-                        : (int) (config('xu-workflow.default_timeout') ?? 120);
+                        : (int) (config('xu-maestro.default_timeout') ?? 120);
 
                     $subIsMandatory = isset($subAgent['mandatory']) && $subAgent['mandatory'] === true;
 

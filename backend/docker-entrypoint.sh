@@ -31,7 +31,7 @@ php artisan migrate --force --no-interaction
 # Queue listener in background
 php artisan queue:listen --tries=1 --timeout=0 &
 
-echo "xu-workflow backend ready on :8000"
+echo "XuMaestro backend ready on :8000"
 
 # Start Laravel dev server (PHP_CLI_SERVER_WORKERS set via env in docker-compose)
 exec php artisan serve --host=0.0.0.0 --port=8000 --no-reload

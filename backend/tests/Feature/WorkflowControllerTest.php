@@ -19,10 +19,10 @@ class WorkflowControllerTest extends TestCase
         parent::setUp();
 
         // Dossier temporaire pour les YAML de test
-        $this->tmpDir = sys_get_temp_dir() . '/xu-workflow-test-' . uniqid();
+        $this->tmpDir = sys_get_temp_dir() . '/xu-maestro-test-' . uniqid();
         mkdir($this->tmpDir, 0755, true);
 
-        Config::set('xu-workflow.workflows_path', $this->tmpDir);
+        Config::set('xu-maestro.workflows_path', $this->tmpDir);
     }
 
     protected function tearDown(): void
@@ -172,8 +172,8 @@ YAML);
         $response = $this->getJson('/api/workflows');
 
         $response->assertStatus(200);
-        // default_timeout = 120 depuis config/xu-workflow.php
-        $response->assertJsonPath('0.agents.0.timeout', config('xu-workflow.default_timeout'));
+        // default_timeout = 120 depuis config/xu-maestro.php
+        $response->assertJsonPath('0.agents.0.timeout', config('xu-maestro.default_timeout'));
     }
 
     #[Test]
@@ -263,7 +263,7 @@ YAML);
     #[Test]
     public function null_workflows_path_returns_empty_array(): void
     {
-        Config::set('xu-workflow.workflows_path', null);
+        Config::set('xu-maestro.workflows_path', null);
 
         $response = $this->getJson('/api/workflows');
 

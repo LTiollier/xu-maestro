@@ -33,7 +33,7 @@ so that le système peut reprendre un run depuis n'importe quel point sans recal
   - [x] Passer `$stepIndex` dans tous les events SSE (remplacer `0` hardcodé)
   - [x] **AJOUTER** un deuxième `$this->checkpointService->write(...)` APRÈS `$completedAgents[] = $agentId` et AVANT `event(AgentBubble)` / `event(done)` — avec `completedAgents` incluant l'agent courant
   - [x] Émettre `event(new RunError(...))` depuis les catch internes avec `agentId` réel, `$stepIndex`, et `$runPath . '/checkpoint.json'`
-  - [x] Patch A5 rétro Épic 2 : remplacer `(int) config('xu-workflow.default_timeout', 120)` par `(int) (config('xu-workflow.default_timeout') ?? 120)`
+  - [x] Patch A5 rétro Épic 2 : remplacer `(int) config('xu-maestro.default_timeout', 120)` par `(int) (config('xu-maestro.default_timeout') ?? 120)`
 
 - [x] **T3 — Modifier `SseController`** (AC 4)
   - [x] Guard double RunError via flag cache `run:{id}:error_emitted` — n'émet que si RunService n'a pas déjà émis

@@ -138,7 +138,7 @@ class RunServiceTimeoutTest extends TestCase
     #[Test]
     public function it_uses_default_timeout_when_yaml_timeout_absent(): void
     {
-        config(['xu-workflow.default_timeout' => 90]);
+        config(['xu-maestro.default_timeout' => 90]);
         $this->mockYaml->method('load')->willReturn($this->workflowWithoutTimeout());
 
         $this->mockDriver->expects($this->once())
