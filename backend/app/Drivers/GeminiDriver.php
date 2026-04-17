@@ -11,7 +11,11 @@ class GeminiDriver implements DriverInterface
 {
     public function execute(string $projectPath, string $systemPrompt, string $context, int $timeout, ?callable $onOutput = null): string
     {
-        $command = 'gemini --prompt "" --yolo --output-format stream-json';
+        $command = 'gemini --prompt "" --output-format stream-json';
+
+        if (config('xu-workflow.yolo_mode')) {
+            $command .= ' --yolo';
+        }
 
         $input = $systemPrompt !== ''
             ? $systemPrompt . "\n\n" . $context
