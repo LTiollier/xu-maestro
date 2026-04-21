@@ -15,6 +15,7 @@
 - **Interactivity**: Agents can pause execution to ask questions to the user.
 - **Resilience & Checkpoints**: Error management, automatic retries (`mandatory` mode), and resumption from the last successful checkpoint.
 - **Context Isolation**: Each step enriches the shared context while maintaining clean isolation during loop iterations.
+- **Parallel Execution**: Run independent agents simultaneously using the `parallel:` block to reduce total run time.
 
 ---
 
@@ -23,6 +24,10 @@
 ### Real-Time Execution & Completion
 ![Execution Completion](docs/end.png)
 *Track agent progress and view final outputs in real-time.*
+
+### Parallel Agent Execution
+![Parallel Execution](docs/parallel.png)
+*Run multiple agents simultaneously to optimize total execution time.*
 
 ### AI-Powered Workflow Generation
 ![Create Workflow](docs/create-workflow.png)
@@ -110,6 +115,21 @@ loop:
   over: "src/**/*.ts"
   as: "file"
 system_prompt: "Analyze the file {{ file }}"
+```
+
+#### ⚡ Parallel Execution
+Run independent agents simultaneously:
+```yaml
+agents:
+  - id: agent-setup
+    engine: claude-code
+  - parallel:
+    - id: agent-frontend
+      engine: claude-code
+    - id: agent-backend
+      engine: claude-code
+  - id: agent-review
+    engine: claude-code
 ```
 
 #### 📦 Sub-workflows

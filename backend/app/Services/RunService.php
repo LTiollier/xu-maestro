@@ -77,7 +77,10 @@ class RunService
         }
 
         // Émettre les events de reprise sur l'agent fautif AVANT d'entrer dans la boucle
-        $currentAgentId = $workflow['agents'][$startStep]['id'] ?? null;
+        $startStepEntry = $workflow['agents'][$startStep] ?? null;
+        $currentAgentId = ($startStepEntry && ! isset($startStepEntry['parallel']))
+            ? ($startStepEntry['id'] ?? null)
+            : null;
         if ($currentAgentId) {
             event(new AgentStatusChanged($runId, $currentAgentId, 'working', $startStep, ''));
             event(new AgentBubble($runId, $currentAgentId, 'Reprise depuis le checkpoint...', $startStep));
@@ -120,6 +123,16 @@ class RunService
         foreach ($workflow['agents'] as $stepIndex => $agent) {
             if ($stepIndex < $startStep) {
                 continue; // Skip agents déjà complétés dans un retry
+            }
+
+            // Groupe parallèle — exécuter tous les agents simultanément puis continuer
+            if (isset($agent['parallel'])) {
+                $this->executeParallelGroup(
+                    $runId, $agent['parallel'], $workflow, $runPath, $brief,
+                    $stepIndex, $completedAgents, $agentResults, $startedAt,
+                );
+                $skipNextAgent = false;
+                continue;
             }
 
             $agentId     = $agent['id'];
@@ -390,6 +403,175 @@ class RunService
         $duration = (int) round((microtime(true) - $startedAt) * 1000);
         $this->artifactService->finalizeRun($runPath, 'completed', $duration, count($agentResults));
         event(new RunCompleted($runId, $duration, count($agentResults), 'completed', $runPath));
+    }
+
+    private function executeParallelGroup(
+        string $runId,
+        array  $agents,
+        array  $workflow,
+        string $runPath,
+        string $brief,
+        int    $stepIndex,
+        array  &$completedAgents,
+        array  &$agentResults,
+        float  $startedAt,
+    ): void {
+        $workflowFile = $workflow['file'];
+        $agentIds     = array_column($agents, 'id');
+
+        // Checkpoint PRÉ-GROUPE (groupe = étape atomique)
+        $this->checkpointService->write($runPath, [
+            'runId'           => $runId,
+            'workflowFile'    => $workflowFile,
+            'brief'           => $brief,
+            'completedAgents' => $completedAgents,
+            'currentAgent'    => null,
+            'currentStep'     => $stepIndex,
+            'context'         => $runPath . '/session.md',
+        ]);
+
+        // Snapshot du contexte partagé au démarrage du groupe (même base pour tous)
+        $baseContext = $this->artifactService->getContextContent($runPath);
+
+        // Émettre working pour tous les agents du groupe simultanément
+        foreach ($agents as $agent) {
+            event(new AgentStatusChanged($runId, $agent['id'], 'working', $stepIndex, ''));
+        }
+
+        // Phase 1 : démarrer tous les processus en async avant d'en attendre un seul
+        $pending = [];
+        foreach ($agents as $agent) {
+            $agentId = $agent['id'];
+            $driver  = $this->driverResolver->for($agent['engine']);
+
+            $timeout = isset($agent['timeout']) && is_int($agent['timeout']) && $agent['timeout'] > 0
+                ? $agent['timeout']
+                : (int) (config('xu-maestro.default_timeout') ?? 120);
+
+            $systemPrompt = $this->contextBuilder->resolveSystemPrompt($agent, []);
+            $context      = $this->contextBuilder->build($baseContext, $agent, false, []);
+
+            $logCallback = function (string $line) use ($runId, $agentId, $stepIndex): void {
+                event(new AgentLogLine($runId, $agentId, $line, $stepIndex));
+            };
+
+            [$process, $getResult] = $driver->startAsync(
+                $workflow['project_path'],
+                $systemPrompt,
+                $context,
+                $timeout,
+                $logCallback,
+            );
+
+            $pending[] = ['agent' => $agent, 'process' => $process, 'getResult' => $getResult];
+        }
+
+        // Phase 1.5 : Polling loop to interleave SSE logs from all parallel processes
+        while (true) {
+            $anyRunning = false;
+            foreach ($pending as $entry) {
+                try {
+                    if ($entry['process']->running()) {
+                        $anyRunning = true;
+                    }
+                } catch (ProcessTimedOutException) {
+                    // Handled in Phase 2 per process
+                }
+            }
+
+            if (!$anyRunning || cache()->get("run:{$runId}:cancelled", false)) {
+                break;
+            }
+
+            usleep(50000); // 50ms sleep to avoid pegged CPU
+        }
+
+        // Phase 2 : collecter les résultats dans l'ordre YAML
+        $groupError = null;
+        foreach ($pending as $entry) {
+            $agent       = $entry['agent'];
+            $agentId     = $agent['id'];
+            $isMandatory = isset($agent['mandatory']) && $agent['mandatory'] === true;
+
+            if (cache()->get("run:{$runId}:cancelled", false)) {
+                foreach ($pending as $p) {
+                    if ($p['process']->running()) {
+                        $p['process']->signal(SIGTERM);
+                    }
+                }
+                throw new RunCancelledException($runId);
+            }
+
+            try {
+                $rawOutput = ($entry['getResult'])();
+                $decoded   = $this->jsonValidator->validate($agentId, $rawOutput);
+
+                $this->artifactService->writeAgentTempOutput($runPath, $agentId, $rawOutput);
+
+                $bubbleMessage = is_string($decoded['output']) ? $decoded['output'] : json_encode($decoded['output']);
+                event(new AgentBubble($runId, $agentId, $bubbleMessage, $stepIndex));
+                event(new AgentStatusChanged($runId, $agentId, 'done', $stepIndex, ''));
+
+                $agentResults[]    = ['id' => $agentId, 'status' => 'done'];
+                $completedAgents[] = $agentId;
+            } catch (RunCancelledException $e) {
+                throw $e;
+            } catch (\Throwable $e) {
+                $msg = $e->getMessage();
+                logger()->error('Parallel agent failed', [
+                    'runId'   => $runId,
+                    'agentId' => $agentId,
+                    'step'    => $stepIndex,
+                    'error'   => $msg,
+                ]);
+                event(new AgentStatusChanged($runId, $agentId, 'error', $stepIndex, $msg));
+
+                if ($isMandatory) {
+                    $groupError = $e;
+                } else {
+                    event(new AgentBubble($runId, $agentId, "[Warning] Agent {$agentId} non-mandatory échoué : {$msg}", $stepIndex));
+                }
+
+                $agentResults[] = ['id' => $agentId, 'status' => 'error'];
+            }
+        }
+
+        // Si un agent mandatory a échoué, propager après avoir traité tout le groupe
+        if ($groupError !== null) {
+            event(new RunError(
+                runId:          $runId,
+                agentId:        'parallel-group',
+                step:           $stepIndex,
+                message:        $groupError->getMessage(),
+                checkpointPath: $runPath . '/checkpoint.json',
+            ));
+            cache()->put("run:{$runId}:error_emitted", true, 60);
+            $this->artifactService->finalizeRun(
+                $runPath, 'error',
+                (int) round((microtime(true) - $startedAt) * 1000),
+                count($completedAgents),
+            );
+            throw $groupError;
+        }
+
+        // Fusionner les outputs dans session.md dans l'ordre YAML
+        $this->artifactService->mergeParallelOutputs($runPath, $agentIds, $runPath . '/session.md');
+
+        // Checkpoint POST-GROUPE
+        $nextStepIndex = $stepIndex + 1;
+        $nextAgentEntry = $workflow['agents'][$nextStepIndex] ?? null;
+        $nextAgentId    = ($nextAgentEntry && ! isset($nextAgentEntry['parallel']))
+            ? ($nextAgentEntry['id'] ?? null)
+            : null;
+        $this->checkpointService->write($runPath, [
+            'runId'           => $runId,
+            'workflowFile'    => $workflowFile,
+            'brief'           => $brief,
+            'completedAgents' => $completedAgents,
+            'currentAgent'    => $nextAgentId,
+            'currentStep'     => $nextStepIndex,
+            'context'         => $runPath . '/session.md',
+        ]);
     }
 
     private function resolveLoopItems(string $over, string $projectPath): array

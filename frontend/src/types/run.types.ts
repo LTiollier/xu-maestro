@@ -5,6 +5,7 @@ export type RunStatus = 'idle' | 'running' | 'completed' | 'error'
 
 export interface AgentState {
   status: AgentStatus
+  step: number
   question: string
   liveLogLine: string[]
 }

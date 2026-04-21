@@ -14,13 +14,14 @@ interface AgentStatusStoreState {
 
 const DEFAULT_AGENT_STATE: AgentState = {
   status: 'idle',
+  step: 0,
   question: '',
   liveLogLine: [],
 }
 
 export const useAgentStatusStore = create<AgentStatusStoreState>((set) => ({
   agents: {},
-  setAgentStatus: (agentId, status, _step, message) =>
+  setAgentStatus: (agentId, status, step, message) =>
     set((state) => {
       const currentAgent = state.agents[agentId] ?? DEFAULT_AGENT_STATE
       const isTerminal = status === 'done' || status === 'error' || status === 'skipped' || status === 'waiting_for_input'
@@ -30,6 +31,7 @@ export const useAgentStatusStore = create<AgentStatusStoreState>((set) => ({
           [agentId]: {
             ...currentAgent,
             status,
+            step,
             question: status === 'waiting_for_input' ? message : currentAgent.question,
             liveLogLine: isTerminal ? [] : currentAgent.liveLogLine,
           },
@@ -39,7 +41,6 @@ export const useAgentStatusStore = create<AgentStatusStoreState>((set) => ({
   setAgentLiveLog: (agentId, line) =>
     set((state) => {
       const current = state.agents[agentId]
-      if (current && current.status !== 'working') return state
       const next = [...(current?.liveLogLine ?? []), line]
       let start = 0
       let total = next.reduce((s, c) => s + c.length, 0)

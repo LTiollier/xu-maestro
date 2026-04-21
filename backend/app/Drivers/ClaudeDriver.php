@@ -7,9 +7,16 @@ namespace App\Drivers;
 use App\Exceptions\CliExecutionException;
 use Illuminate\Support\Facades\Process;
 
-class ClaudeDriver implements DriverInterface
+final class ClaudeDriver implements DriverInterface
 {
     public function execute(string $projectPath, string $systemPrompt, string $context, int $timeout, ?callable $onOutput = null): string
+    {
+        [, $getResult] = $this->startAsync($projectPath, $systemPrompt, $context, $timeout, $onOutput);
+
+        return $getResult();
+    }
+
+    public function startAsync(string $projectPath, string $systemPrompt, string $context, int $timeout, ?callable $onOutput = null): array
     {
         $command = 'claude -p --verbose --allowedTools "Bash,Read,Write,Edit" --output-format stream-json';
 
@@ -53,10 +60,10 @@ class ClaudeDriver implements DriverInterface
             }
         };
 
-        $result = Process::path($projectPath)
+        $process = Process::path($projectPath)
             ->input($context)
             ->timeout($timeout)
-            ->run($command, function (string $type, string $chunk) use (&$buffer, $parseLine): void {
+            ->start($command, function (string $type, string $chunk) use (&$buffer, $parseLine): void {
                 if ($type !== 'out') {
                     return;
                 }
@@ -73,16 +80,36 @@ class ClaudeDriver implements DriverInterface
                 }
             });
 
-        // Flush any remaining content in the buffer (final line without trailing newline)
-        if ($buffer !== '') {
-            $parseLine(trim($buffer));
-        }
+        $getResult = function () use ($process, &$buffer, &$resultFound, &$finalResult, $parseLine): string {
+            try {
+                $result = $process->wait();
 
-        if ($result->failed()) {
-            throw new CliExecutionException('claude', $result->exitCode(), $result->errorOutput());
-        }
+                // Flush any remaining content in the buffer (final line without trailing newline)
+                if ($buffer !== '') {
+                    $parseLine(trim($buffer));
+                }
 
-        return $resultFound ? $finalResult : $result->output();
+                if ($result->failed()) {
+                    throw new CliExecutionException('claude', $result->exitCode(), $result->errorOutput());
+                }
+
+                return $resultFound ? $finalResult : $result->output();
+            } catch (\LogicException) {
+                // Process was already detected as terminated by a concurrent running() poll
+                // (parallel execution). All pipe output was already flushed via readPipes().
+                if ($buffer !== '') {
+                    $parseLine(trim($buffer));
+                    $buffer = '';
+                }
+                if (! $resultFound) {
+                    throw new CliExecutionException('claude', 1, 'Process terminated without producing a result');
+                }
+
+                return $finalResult;
+            }
+        };
+
+        return [$process, $getResult];
     }
 
     public function prompt(string $systemPrompt, string $userPrompt, int $timeout = 60): string

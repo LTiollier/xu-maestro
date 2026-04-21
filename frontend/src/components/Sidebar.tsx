@@ -15,6 +15,7 @@ import { Layers, Users, RefreshCw, Loader2, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useWorkflows } from '@/hooks/useWorkflows'
 import type { AgentStatus } from '@/types/run.types'
+import { isParallelGroup, countAgents } from '@/types/workflow.types'
 import { WorkflowWizard } from './WorkflowWizard'
 
 const AgentSidebarItemConnected = React.memo(function AgentSidebarItemConnected({
@@ -99,12 +100,27 @@ export function Sidebar() {
             <div className="flex items-center gap-2 px-1 mb-2">
               <Users className="w-3 h-3 text-zinc-600" />
               <span className="text-[10px] font-bold text-zinc-600 uppercase tracking-wider">
-                Agents ({selectedWorkflow.agents.length})
+                Agents ({countAgents(selectedWorkflow.agents)})
               </span>
             </div>
-            {selectedWorkflow.agents.map((agent) => (
-              <AgentSidebarItemConnected key={agent.id} agentId={agent.id} engine={agent.engine} />
-            ))}
+            {selectedWorkflow.agents.map((step, idx) => {
+              if (isParallelGroup(step)) {
+                return (
+                  <div
+                    key={`parallel-${idx}`}
+                    className="border-l-2 border-zinc-700 pl-2 flex flex-col gap-1"
+                    title="Agents parallèles"
+                  >
+                    {step.parallel.map((agent) => (
+                      <AgentSidebarItemConnected key={agent.id} agentId={agent.id} engine={agent.engine} />
+                    ))}
+                  </div>
+                )
+              }
+              return (
+                <AgentSidebarItemConnected key={step.id} agentId={step.id} engine={step.engine} />
+              )
+            })}
           </>
         ) : (
           <div className="flex flex-col items-center justify-center h-full py-10 opacity-30 text-center gap-4">

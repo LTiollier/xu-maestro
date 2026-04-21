@@ -7,7 +7,7 @@ namespace App\Services;
 use App\Support\SanitizesEnvCredentials;
 use Illuminate\Support\Facades\File;
 
-class ArtifactService
+final class ArtifactService
 {
     use SanitizesEnvCredentials;
 
@@ -92,6 +92,37 @@ class ArtifactService
     public function getContextContent(string $runPath): string
     {
         return File::get($runPath . '/session.md');
+    }
+
+    /**
+     * Écrit l'output d'un agent parallèle dans un fichier temporaire isolé.
+     * Utilisé pendant l'exécution du groupe pour éviter les collisions d'écriture sur session.md.
+     */
+    public function writeAgentTempOutput(string $runPath, string $agentId, string $content): void
+    {
+        $sanitized = $this->sanitizeEnvCredentials($content);
+        File::makeDirectory($runPath . '/tmp', 0755, true, true);
+        File::put($runPath . '/tmp/' . $agentId . '.md', $sanitized);
+    }
+
+    /**
+     * Fusionne les fichiers temporaires des agents parallèles dans session.md.
+     * L'ordre de fusion suit l'ordre de déclaration YAML ($agentIds) pour garantir le déterminisme.
+     * Les fichiers temporaires sont supprimés après fusion.
+     */
+    public function mergeParallelOutputs(string $runPath, array $agentIds, string $contextPath): void
+    {
+        foreach ($agentIds as $agentId) {
+            $tmpPath = $runPath . '/tmp/' . $agentId . '.md';
+            if (! File::exists($tmpPath)) {
+                continue;
+            }
+            $content = File::get($tmpPath);
+            $section = "\n---\n## Agent: {$agentId}\n{$content}\n";
+            File::append($contextPath, $section);
+            File::put($runPath . '/agents/' . $agentId . '.md', $content);
+            File::delete($tmpPath);
+        }
     }
 
 }

@@ -47,6 +47,46 @@ Chaque agent dans la liste `agents` accepte les paramètres suivants :
 
 ---
 
+### Exécution Parallèle (`parallel:`)
+
+Le bloc `parallel:` permet d'exécuter plusieurs agents simultanément. Le pipeline attend que tous les agents du groupe aient terminé avant de passer à l'étape suivante.
+
+```yaml
+agents:
+  - id: agent-setup
+    engine: claude-code
+
+  - parallel:
+    - id: agent-frontend
+      engine: claude-code
+      system_prompt: "Implémente le composant UI."
+    - id: agent-backend
+      engine: claude-code
+      system_prompt: "Implémente l'endpoint API."
+
+  - id: agent-review
+    engine: claude-code
+```
+
+#### Fonctionnement
+
+- **Démarrage simultané** : tous les agents du groupe sont lancés en parallèle ; chacun reçoit le même snapshot du contexte partagé au démarrage du groupe.
+- **Fusion du contexte** : chaque agent écrit son output dans un fichier temporaire isolé. Une fois le groupe terminé, les outputs sont fusionnés dans `session.md` dans l'ordre de déclaration YAML (déterministe).
+- **Timeout indépendant** : chaque agent parallèle a son propre `timeout`.
+- **Gestion des échecs** :
+    - Si un agent `mandatory: true` échoue, tout le groupe échoue et le run s'arrête.
+    - Si un agent non-mandatory échoue, le groupe continue et un avertissement est émis dans le flux SSE.
+- **Checkpoint** : le groupe entier est traité comme une étape atomique. Le checkpoint n'est écrit qu'après la complétion de tous les agents du groupe.
+
+#### Contraintes
+
+- `interactive: true` est interdit sur un agent dans un bloc `parallel:`.
+- `loop:` est interdit sur un agent parallèle.
+- Les blocs `parallel:` imbriqués ne sont pas supportés.
+- Un groupe `parallel:` doit contenir au minimum 2 agents.
+
+---
+
 ### Moteur Spécial : `sub-workflow`
 Le moteur `sub-workflow` permet de composer des workflows complexes en appelant des fichiers YAML existants.
 

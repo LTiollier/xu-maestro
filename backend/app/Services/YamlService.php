@@ -102,49 +102,89 @@ final class YamlService
             return false;
         }
 
-        foreach ($data['agents'] as $agent) {
-            if (! is_array($agent)) {
-                return false;
-            }
-            if (! isset($agent['id']) || ! is_string($agent['id']) || $agent['id'] === '') {
-                return false;
-            }
-            if (! isset($agent['engine']) || ! is_string($agent['engine']) || $agent['engine'] === '') {
-                return false;
-            }
-            if (! in_array($agent['engine'], ['claude-code', 'gemini-cli', 'sub-workflow'], true)) {
+        foreach ($data['agents'] as $step) {
+            if (! is_array($step)) {
                 return false;
             }
 
+            if (array_key_exists('parallel', $step)) {
+                $group = $step['parallel'];
+                if (! is_array($group) || count($group) < 2) {
+                    return false;
+                }
+                foreach ($group as $agent) {
+                    if (! $this->validateAgent($agent, inParallelGroup: true)) {
+                        return false;
+                    }
+                }
+            } else {
+                if (! $this->validateAgent($step, inParallelGroup: false)) {
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    }
+
+    private function validateAgent(mixed $agent, bool $inParallelGroup): bool
+    {
+        if (! is_array($agent)) {
+            return false;
+        }
+
+        if (! isset($agent['id']) || ! is_string($agent['id']) || $agent['id'] === '') {
+            return false;
+        }
+
+        if (! isset($agent['engine']) || ! is_string($agent['engine']) || $agent['engine'] === '') {
+            return false;
+        }
+
+        if (! in_array($agent['engine'], ['claude-code', 'gemini-cli', 'sub-workflow'], true)) {
+            return false;
+        }
+
+        if ($inParallelGroup) {
+            if (isset($agent['interactive']) && $agent['interactive'] === true) {
+                return false;
+            }
             if (isset($agent['loop'])) {
-                if (! is_array($agent['loop'])) {
-                    return false;
-                }
-                if (! isset($agent['loop']['over']) || ! is_string($agent['loop']['over']) || $agent['loop']['over'] === '') {
-                    return false;
-                }
-                if (! isset($agent['loop']['as']) || ! is_string($agent['loop']['as']) || $agent['loop']['as'] === '') {
-                    return false;
-                }
+                return false;
             }
-
             if ($agent['engine'] === 'sub-workflow') {
-                if (! isset($agent['workflow_file']) || ! is_string($agent['workflow_file']) || $agent['workflow_file'] === '') {
-                    return false;
-                }
-                $workflowsPath = config('xu-maestro.workflows_path');
-                if (! is_string($workflowsPath) || $workflowsPath === '') {
-                    return false;
-                }
-                $subFile = $workflowsPath . '/' . basename($agent['workflow_file']);
-                if (! is_file($subFile)) {
-                    return false;
-                }
-                try {
-                    \Symfony\Component\Yaml\Yaml::parseFile($subFile);
-                } catch (\Symfony\Component\Yaml\Exception\ParseException) {
-                    return false;
-                }
+                return false;
+            }
+        }
+
+        if (isset($agent['loop'])) {
+            if (! is_array($agent['loop'])) {
+                return false;
+            }
+            if (! isset($agent['loop']['over']) || ! is_string($agent['loop']['over']) || $agent['loop']['over'] === '') {
+                return false;
+            }
+            if (! isset($agent['loop']['as']) || ! is_string($agent['loop']['as']) || $agent['loop']['as'] === '') {
+                return false;
+            }
+        }
+
+        if ($agent['engine'] === 'sub-workflow') {
+            if (! isset($agent['workflow_file']) || ! is_string($agent['workflow_file']) || $agent['workflow_file'] === '') {
+                return false;
+            }
+            $workflowsPath = config('xu-maestro.workflows_path');
+            if (! is_string($workflowsPath) || $workflowsPath === '') {
+                return false;
+            }
+            $subFile = $workflowsPath . '/' . basename($agent['workflow_file']);
+            if (! is_file($subFile)) {
+                return false;
+            }
+            try {
+                \Symfony\Component\Yaml\Yaml::parseFile($subFile);
+            } catch (\Symfony\Component\Yaml\Exception\ParseException) {
+                return false;
             }
         }
 

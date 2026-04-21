@@ -6,8 +6,10 @@ import { useRunStore } from '@/stores/runStore'
 import { useAgentStatusStore } from '@/stores/agentStatusStore'
 import { useSSEListener } from '@/hooks/useSSEListener'
 import { useWorkflowStore } from '@/stores/workflowStore'
+import { isParallelGroup } from '@/types/workflow.types'
 import { TerminalHeader } from './Terminal/TerminalHeader'
 import { LogViewer } from './Terminal/LogViewer'
+import type { LogAgent, LogStep } from './Terminal/LogViewer'
 import { RunInputForm } from './Terminal/RunInputForm'
 
 const RunHistory = dynamic(
@@ -38,13 +40,14 @@ export function Terminal() {
   )
   const waitingAgent = waitingAgentId ? agentStatuses[waitingAgentId] : null
 
-  // Update browser tab title based on run status
+  // Update browser tab title based on run status (Step-based progression)
   useEffect(() => {
-    const total = selectedWorkflow?.agents.length ?? 0
-    const progressCount = Object.values(agentStatuses).filter(a => 
-      ['working', 'done', 'skipped', 'waiting_for_input'].includes(a.status)
-    ).length
-    const hasQuestion = Object.values(agentStatuses).some(a => a.status === 'waiting_for_input')
+    const total = selectedWorkflow ? selectedWorkflow.agents.length : 0
+    const activeAgents = Object.values(agentStatuses).filter(a => a.status !== 'idle')
+    const currentStepIndex = activeAgents.length > 0
+      ? Math.max(...activeAgents.map(a => a.step))
+      : 0
+    const progressCount = activeAgents.length > 0 ? currentStepIndex + 1 : 0
 
     let title = 'XuMaestro'
     if (status === 'idle') {
@@ -130,14 +133,45 @@ export function Terminal() {
     }
   }, [runId, waitingAgentId, answer, isAnswering])
 
-  const logAgents = useMemo(() => {
+  const logSteps = useMemo((): LogStep[] => {
     if (!logContent) return []
     const parts = logContent.split('---\n## Agent:')
-    return parts.slice(1).map(p => {
+    const flatAgents: LogAgent[] = parts.slice(1).map(p => {
       const [nameLine, ...rest] = p.split('\n')
       return { name: nameLine.trim(), output: rest.join('\n').trim() }
     })
-  }, [logContent])
+
+    if (!selectedWorkflow) {
+      return flatAgents.map(a => ({ type: 'sequential', ...a }))
+    }
+
+    const agentMap = new Map(flatAgents.map(a => [a.name, a]))
+    const result: LogStep[] = []
+
+    for (const step of selectedWorkflow.agents) {
+      if (isParallelGroup(step)) {
+        const groupAgents = step.parallel
+          .map(a => agentMap.get(a.id))
+          .filter((a): a is LogAgent => a !== undefined)
+        if (groupAgents.length > 0) {
+          result.push({ type: 'parallel', agents: groupAgents })
+        }
+      } else {
+        const la = agentMap.get(step.id)
+        if (la) result.push({ type: 'sequential', ...la })
+      }
+    }
+
+    // Fallback: agents not found in workflow definition
+    const processedNames = new Set(
+      result.flatMap(s => s.type === 'parallel' ? s.agents.map(a => a.name) : [s.name])
+    )
+    for (const agent of flatAgents) {
+      if (!processedNames.has(agent.name)) result.push({ type: 'sequential', ...agent })
+    }
+
+    return result
+  }, [logContent, selectedWorkflow])
 
   return (
     <div className="flex-1 flex flex-col bg-black min-w-0 overflow-hidden">
@@ -148,8 +182,9 @@ export function Terminal() {
         onHistoryOpen={() => setIsHistoryOpen(true)}
       />
       <LogViewer
-        logAgents={logAgents}
+        logSteps={logSteps}
         agentStatuses={agentStatuses}
+        selectedWorkflow={selectedWorkflow}
         runId={runId}
         waitingAgentId={waitingAgentId}
         waitingAgent={waitingAgent}

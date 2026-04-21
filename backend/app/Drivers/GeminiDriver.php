@@ -7,9 +7,16 @@ namespace App\Drivers;
 use App\Exceptions\CliExecutionException;
 use Illuminate\Support\Facades\Process;
 
-class GeminiDriver implements DriverInterface
+final class GeminiDriver implements DriverInterface
 {
     public function execute(string $projectPath, string $systemPrompt, string $context, int $timeout, ?callable $onOutput = null): string
+    {
+        [, $getResult] = $this->startAsync($projectPath, $systemPrompt, $context, $timeout, $onOutput);
+
+        return $getResult();
+    }
+
+    public function startAsync(string $projectPath, string $systemPrompt, string $context, int $timeout, ?callable $onOutput = null): array
     {
         $command = 'gemini --prompt "" --output-format stream-json';
 
@@ -21,26 +28,6 @@ class GeminiDriver implements DriverInterface
             ? $systemPrompt . "\n\n" . $context
             : $context;
 
-        return $this->runGeminiStream($projectPath, $command, $input, $timeout, $onOutput);
-    }
-
-    public function prompt(string $systemPrompt, string $userPrompt, int $timeout = 60): string
-    {
-        $command = 'gemini --prompt "" --output-format stream-json';
-        $input   = $systemPrompt . "\n\n" . $userPrompt;
-
-        return $this->runGeminiStream(sys_get_temp_dir(), $command, $input, $timeout);
-    }
-
-    public function kill(int $pid): void
-    {
-        if ($pid > 0 && function_exists('posix_kill')) {
-            posix_kill($pid, SIGTERM);
-        }
-    }
-
-    private function runGeminiStream(string $path, string $command, string $input, int $timeout, ?callable $onOutput = null): string
-    {
         $buffer              = '';
         $accumulatedResponse = '';
 
@@ -74,7 +61,6 @@ class GeminiDriver implements DriverInterface
                 }
             }
 
-            // Log tool usage to provide real-time feedback
             if ($type === 'tool_use' && $onOutput !== null) {
                 try {
                     $toolName = $data['tool_name'] ?? 'tool';
@@ -84,10 +70,10 @@ class GeminiDriver implements DriverInterface
             }
         };
 
-        $result = Process::path($path)
+        $process = Process::path($projectPath)
             ->input($input)
             ->timeout($timeout)
-            ->run($command, function (string $type, string $chunk) use (&$buffer, $parseLine): void {
+            ->start($command, function (string $type, string $chunk) use (&$buffer, $parseLine): void {
                 if ($type !== 'out') {
                     return;
                 }
@@ -104,15 +90,48 @@ class GeminiDriver implements DriverInterface
                 }
             });
 
-        // Flush any remaining content in the buffer
-        if ($buffer !== '') {
-            $parseLine(trim($buffer));
-        }
+        $getResult = function () use ($process, &$buffer, &$accumulatedResponse, $parseLine): string {
+            try {
+                $result = $process->wait();
 
-        if ($result->failed()) {
-            throw new CliExecutionException('gemini', $result->exitCode(), $result->errorOutput());
-        }
+                // Flush any remaining content in the buffer
+                if ($buffer !== '') {
+                    $parseLine(trim($buffer));
+                }
 
-        return $accumulatedResponse ?: $result->output();
+                if ($result->failed()) {
+                    throw new CliExecutionException('gemini', $result->exitCode(), $result->errorOutput());
+                }
+
+                return $accumulatedResponse ?: $result->output();
+            } catch (\LogicException) {
+                // Process was already detected as terminated by a concurrent running() poll
+                // (parallel execution). All pipe output was already flushed via readPipes().
+                if ($buffer !== '') {
+                    $parseLine(trim($buffer));
+                    $buffer = '';
+                }
+
+                if (! $accumulatedResponse) {
+                    throw new CliExecutionException('gemini', 1, 'Process terminated without producing a result');
+                }
+
+                return $accumulatedResponse;
+            }
+        };
+
+        return [$process, $getResult];
+    }
+
+    public function prompt(string $systemPrompt, string $userPrompt, int $timeout = 60): string
+    {
+        return $this->execute(sys_get_temp_dir(), $systemPrompt, $userPrompt, $timeout);
+    }
+
+    public function kill(int $pid): void
+    {
+        if ($pid > 0 && function_exists('posix_kill')) {
+            posix_kill($pid, SIGTERM);
+        }
     }
 }

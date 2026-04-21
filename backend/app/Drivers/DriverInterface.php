@@ -25,6 +25,15 @@ interface DriverInterface
     public function prompt(string $systemPrompt, string $userPrompt, int $timeout = 60): string;
 
     /**
+     * Start the agent process asynchronously without blocking.
+     * Returns [InvokedProcess, callable(): string] — call the callable to wait and get the result.
+     * Allows multiple agents to run concurrently (parallel group execution).
+     *
+     * @return array{0: \Illuminate\Process\InvokedProcess, 1: callable(): string}
+     */
+    public function startAsync(string $projectPath, string $systemPrompt, string $context, int $timeout, ?callable $onOutput = null): array;
+
+    /**
      * Send SIGTERM to a running CLI process by PID.
      * Used by SSE handler (Story 2.4) for mid-execution cancellation.
      */

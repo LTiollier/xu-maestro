@@ -1,15 +1,30 @@
 'use client'
 
-import React from 'react'
+import React, { useMemo } from 'react'
 import dynamic from 'next/dynamic'
 import { Terminal as TerminalIcon, Loader2 } from 'lucide-react'
 import type { AgentState, RunStatus } from '@/types/run.types'
+import type { Workflow } from '@/types/workflow.types'
+import { isParallelGroup } from '@/types/workflow.types'
 import { ErrorBanner } from './ErrorBanner'
 
 const QuestionInteraction = dynamic(
   () => import('@/components/QuestionInteraction'),
   { ssr: false },
 )
+
+// --- Exported types (used by Terminal.tsx) ---
+
+export interface LogAgent {
+  name: string
+  output: string
+}
+
+export type LogStep =
+  | { type: 'sequential'; name: string; output: string }
+  | { type: 'parallel'; agents: LogAgent[] }
+
+// --- AgentOutputBlock ---
 
 const AgentOutputBlock = React.memo(function AgentOutputBlock({ content }: { content: string }) {
   if (content.trim().startsWith('{')) {
@@ -19,7 +34,7 @@ const AgentOutputBlock = React.memo(function AgentOutputBlock({ content }: { con
         return <AgentOutputBlock content={parsed.output} />
       }
     } catch {
-      // Fallback to raw text if parsing fails
+      // fallback to raw text
     }
   }
 
@@ -48,14 +63,56 @@ const AgentOutputBlock = React.memo(function AgentOutputBlock({ content }: { con
   )
 })
 
-interface LogAgent {
-  name: string
-  output: string
-}
+// --- Block sub-components ---
+
+const CompletedAgentBlock = React.memo(function CompletedAgentBlock({ name, output }: LogAgent) {
+  return (
+    <div className="flex flex-col gap-2 min-w-0">
+      <div className="flex items-center gap-3 mb-1">
+        <span className="text-blue-500 font-bold">[{name}]</span>
+        <div className="h-px flex-1 bg-zinc-900" />
+      </div>
+      <div className="text-zinc-300 leading-relaxed whitespace-pre-wrap pl-4 border-l border-zinc-800">
+        <AgentOutputBlock content={output} />
+      </div>
+    </div>
+  )
+})
+
+const LiveAgentBlock = React.memo(function LiveAgentBlock({ id, liveLogLine }: { id: string; liveLogLine: string[] }) {
+  return (
+    <div className="flex flex-col gap-2 min-w-0">
+      <div className="flex items-center gap-3 mb-1">
+        <span className="text-blue-400 font-bold">[{id}]</span>
+        <div className="h-px flex-1 bg-zinc-900" />
+        <Loader2 className="w-3 h-3 text-blue-500 animate-spin flex-shrink-0" />
+      </div>
+      <div className="text-zinc-400 leading-relaxed whitespace-pre-wrap pl-4 border-l border-zinc-800 italic text-[12px]">
+        {liveLogLine.join('')}
+      </div>
+    </div>
+  )
+})
+
+// --- Static JSX hoisted at module level (rendering-hoist-jsx) ---
+
+const EMPTY_STATE = (
+  <div className="flex-col items-center justify-center py-40 opacity-20 text-center gap-4 flex">
+    <TerminalIcon className="w-12 h-12" />
+    <p className="text-sm font-mono tracking-tight">READY FOR INPUT...</p>
+  </div>
+)
+
+// --- Internal type for live step grouping ---
+
+type LiveStep = { type: 'sequential'; id: string } | { type: 'parallel'; ids: string[] }
+
+// --- Props ---
 
 interface LogViewerProps {
-  logAgents: LogAgent[]
+  logSteps: LogStep[]
   agentStatuses: Record<string, AgentState>
+  selectedWorkflow: Workflow | null
   runId: string | null
   waitingAgentId: string | undefined
   waitingAgent: AgentState | null
@@ -71,8 +128,9 @@ interface LogViewerProps {
 }
 
 export function LogViewer({
-  logAgents,
+  logSteps,
   agentStatuses,
+  selectedWorkflow,
   runId,
   waitingAgentId,
   waitingAgent,
@@ -86,50 +144,91 @@ export function LogViewer({
   bottomRef,
   scrollRef,
 }: LogViewerProps) {
+  const completedNames = useMemo(() => {
+    const names = new Set<string>()
+    for (const step of logSteps) {
+      if (step.type === 'parallel') step.agents.forEach(a => names.add(a.name))
+      else names.add(step.name)
+    }
+    return names
+  }, [logSteps])
+
+  const liveSteps = useMemo((): LiveStep[] => {
+    const activeEntries = Object.entries(agentStatuses).filter(
+      ([id, a]) => a.status === 'working' && a.liveLogLine.length > 0 && !completedNames.has(id)
+    )
+    if (activeEntries.length === 0) return []
+
+    const activeIds = new Set(activeEntries.map(([id]) => id))
+    const result: LiveStep[] = []
+    const processedIds = new Set<string>()
+
+    if (selectedWorkflow) {
+      for (const step of selectedWorkflow.agents) {
+        if (isParallelGroup(step)) {
+          const groupIds = step.parallel.map(a => a.id).filter(id => activeIds.has(id))
+          if (groupIds.length > 0) {
+            result.push({ type: 'parallel', ids: groupIds })
+            groupIds.forEach(id => processedIds.add(id))
+          }
+        } else {
+          if (activeIds.has(step.id) && !processedIds.has(step.id)) {
+            result.push({ type: 'sequential', id: step.id })
+            processedIds.add(step.id)
+          }
+        }
+      }
+    }
+
+    for (const [id] of activeEntries) {
+      if (!processedIds.has(id)) result.push({ type: 'sequential', id })
+    }
+
+    return result
+  }, [agentStatuses, completedNames, selectedWorkflow])
+
   return (
     <div className="flex-1 overflow-y-auto font-mono text-[13px] p-6 custom-scrollbar" ref={scrollRef}>
       <div className="max-w-4xl mx-auto flex flex-col gap-8">
-        {logAgents.length > 0 ? (
-          logAgents.map((agent, i) => (
-            <div key={i} className="flex flex-col gap-2">
-              <div className="flex items-center gap-3 mb-1">
-                <span className="text-blue-500 font-bold">[{agent.name}]</span>
-                <div className="h-px flex-1 bg-zinc-900" />
-              </div>
-              <div className="text-zinc-300 leading-relaxed whitespace-pre-wrap pl-4 border-l border-zinc-800">
-                <AgentOutputBlock content={agent.output} />
-              </div>
-            </div>
-          ))
-        ) : !runId ? (
-          <div className="flex-col items-center justify-center py-40 opacity-20 text-center gap-4 flex">
-            <TerminalIcon className="w-12 h-12" />
-            <p className="text-sm font-mono tracking-tight">
-              READY FOR INPUT...
-            </p>
-          </div>
-        ) : null}
 
-        {/* Current Working Agent Live Log */}
-        {Object.entries(agentStatuses).map(([id, agent]) => {
-          if (agent.status !== 'working' || agent.liveLogLine.length === 0) return null
-          if (logAgents.some(la => la.name === id)) return null
+        {logSteps.length > 0 ? (
+          logSteps.map((step, i) => {
+            if (step.type === 'parallel') {
+              return (
+                <div key={i} className="pl-3 border-l-2 border-violet-500/30 flex flex-col gap-3">
+                  <div className="grid grid-cols-2 gap-6">
+                    {step.agents.map((agent, j) => (
+                      <CompletedAgentBlock key={j} {...agent} />
+                    ))}
+                  </div>
+                </div>
+              )
+            }
+            return <CompletedAgentBlock key={i} name={step.name} output={step.output} />
+          })
+        ) : !runId ? EMPTY_STATE : null}
 
+        {liveSteps.map((step, i) => {
+          if (step.type === 'parallel') {
+            return (
+              <div key={i} className="pl-3 border-l-2 border-violet-500/30 flex flex-col gap-3">
+                <div className="grid grid-cols-2 gap-6">
+                  {step.ids.map(id => (
+                    <LiveAgentBlock key={id} id={id} liveLogLine={agentStatuses[id].liveLogLine} />
+                  ))}
+                </div>
+              </div>
+            )
+          }
           return (
-            <div key={id} className="flex flex-col gap-2">
-              <div className="flex items-center gap-3 mb-1">
-                <span className="text-blue-400 font-bold">[{id}]</span>
-                <div className="h-px flex-1 bg-zinc-900" />
-                <Loader2 className="w-3 h-3 text-blue-500 animate-spin" />
-              </div>
-              <div className="text-zinc-400 leading-relaxed whitespace-pre-wrap pl-4 border-l border-zinc-800 italic text-[12px]">
-                {agent.liveLogLine.join('')}
-              </div>
-            </div>
+            <LiveAgentBlock
+              key={step.id}
+              id={step.id}
+              liveLogLine={agentStatuses[step.id].liveLogLine}
+            />
           )
         })}
 
-        {/* Interaction Area: Question from Agent */}
         {waitingAgent && waitingAgentId && (
           <QuestionInteraction
             agentId={waitingAgentId}
@@ -141,7 +240,6 @@ export function LogViewer({
           />
         )}
 
-        {/* Global Error Banner and Retry */}
         {status === 'error' && (
           <ErrorBanner errorMessage={errorMessage} onRetry={onRetry} />
         )}

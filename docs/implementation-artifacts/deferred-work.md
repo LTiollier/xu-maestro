@@ -6,6 +6,11 @@
 - **Double "Reprise depuis le checkpoint..." sur reconnect pendant retry** — `executeFromCheckpoint` émet `AgentStatusChanged(working)` + `AgentBubble("Reprise depuis le checkpoint...")` avant de démarrer la boucle. Ces events sont appendés au nouveau log. Sur une reconnexion pendant un retry, le client recevra ces events une deuxième fois, affichant la bulle "Reprise" à nouveau dans RunSidebar. Impact visuel mineur. Corriger via un flag ou en émettant ces events avant de les logger.
 - **Thinning du log sur reconnexion active** — Pour un run actif, chaque reconnexion rejoue l'intégralité des events passés depuis le début du run. Pour des workflows très longs (20+ agents), ce log peut atteindre ~100 events. À optimiser si la performance de replay devient perceptible (e.g., via `Last-Event-ID` ou en ne rejouant que le dernier status par agent).
 
+## Deferred from: parallel-execution review (2026-04-21)
+
+- **Resume checkpoint sans événements de reprise pour les groupes parallèles** — `executeFromCheckpoint()` émet `AgentStatusChanged(working)` + `AgentBubble("Reprise depuis le checkpoint...")` uniquement pour les agents séquentiels. Si le checkpoint pointe sur un groupe parallèle, ces événements ne sont pas émis ; le groupe s'exécute silencieusement sans indicateur visuel de reprise. Corriger en émettant les working events pour tous les agents du groupe parallèle dans `executeFromCheckpoint()`.
+- **`$groupError` overwrite — dernier mandatory gagne dans RunError** — Dans `executeParallelGroup()`, si deux agents mandatory échouent, `$groupError` est écrasé à chaque fois : seul le message du dernier est propagé dans l'event `RunError`. Les deux agents reçoivent bien `AgentStatusChanged(error)` en SSE, donc la visibilité frontend est correcte, mais le message de `RunError` peut être trompeur. Corriger en accumulant les erreurs ou en gardant la première.
+
 ## Deferred from: agent-streaming-live-logs review (2026-04-14)
 
 - **SseEmitter echo/flush sans guard SSE actif** — `handleAgentLogLine` (et les autres handlers) utilisent `echo`/`flush()` directement. Si l'architecture évolue vers un worker en queue, ces appels écriraient sur stdout du worker. À protéger via un contexte SSE explicite si le modèle d'exécution change.

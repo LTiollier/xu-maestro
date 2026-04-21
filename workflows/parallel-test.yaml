@@ -1,0 +1,31 @@
+name: "Parallel Execution Test"
+project_path: "/Users/leoelmy/Projects/test-workflow"
+agents:
+  - id: setup
+    engine: gemini-cli
+    timeout: 600
+    steps:
+      - "Écris une phrase de confirmation dans un fichier parallel-test-setup.txt : 'Setup completed at <timestamp>'. Utilise la commande date pour obtenir le timestamp réel."
+    system_prompt: "Tu es un agent de setup. Exécute la tâche demandée."
+
+  - parallel:
+      - id: worker-a
+        engine: gemini-cli
+        timeout: 600
+        steps:
+          - "Lis parallel-test-setup.txt, puis écris dans parallel-test-worker-a.txt : 'Worker A done at <timestamp>'. Attends 3 secondes (sleep 3) avant d'écrire."
+        system_prompt: "Tu es le worker A. Exécute la tâche demandée."
+
+      - id: worker-b
+        engine: gemini-cli
+        timeout: 600
+        steps:
+          - "Lis parallel-test-setup.txt, puis écris dans parallel-test-worker-b.txt : 'Worker B done at <timestamp>'. Attends 3 secondes (sleep 3) avant d'écrire."
+        system_prompt: "Tu es le worker B. Exécute la tâche demandée."
+
+  - id: verify
+    engine: gemini-cli
+    timeout: 60
+    steps:
+      - "Lis les fichiers parallel-test-worker-a.txt et parallel-test-worker-b.txt. Vérifie que les deux existent et affiche leur contenu dans ton output."
+    system_prompt: "Tu es un agent de vérification. Confirme que les deux workers ont bien produit leur fichier et résume le résultat."
