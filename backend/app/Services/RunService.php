@@ -27,6 +27,7 @@ class RunService
         private readonly AgentContextBuilder $contextBuilder,
         private readonly JsonOutputValidator $jsonValidator,
         private readonly SubWorkflowExecutor $subWorkflowExecutor,
+        private readonly GitService $gitService,
     ) {}
 
     public function execute(string $runId, string $workflowFile, string $brief): void
@@ -398,6 +399,16 @@ class RunService
 
             // Émettre done APRÈS écriture checkpoint
             event(new AgentStatusChanged($runId, $agentId, 'done', $stepIndex, ''));
+
+            // Git Checkpoint (Auto-Commit)
+            $this->gitService->runCheckpoint(
+                $runId,
+                $workflow['project_path'],
+                $workflow,
+                $agent,
+                $rawOutput ?? '', // Use last raw output for commit message generation
+                $stepIndex
+            );
         }
 
         $duration = (int) round((microtime(true) - $startedAt) * 1000);
@@ -511,6 +522,16 @@ class RunService
                 $bubbleMessage = is_string($decoded['output']) ? $decoded['output'] : json_encode($decoded['output']);
                 event(new AgentBubble($runId, $agentId, $bubbleMessage, $stepIndex));
                 event(new AgentStatusChanged($runId, $agentId, 'done', $stepIndex, ''));
+
+                // Git Checkpoint (Auto-Commit)
+                $this->gitService->runCheckpoint(
+                    $runId,
+                    $workflow['project_path'],
+                    $workflow,
+                    $agent,
+                    $rawOutput,
+                    $stepIndex
+                );
 
                 $agentResults[]    = ['id' => $agentId, 'status' => 'done'];
                 $completedAgents[] = $agentId;

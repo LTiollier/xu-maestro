@@ -35,6 +35,7 @@ class RunServiceRetryTest extends TestCase
     private YamlService $mockYaml;
     private ArtifactService $mockArtifact;
     private CheckpointService $mockCheckpoint;
+    private \App\Services\GitService $mockGit;
     private RunService $service;
 
     protected function setUp(): void
@@ -49,17 +50,18 @@ class RunServiceRetryTest extends TestCase
         $this->mockYaml       = $this->createMock(YamlService::class);
         $this->mockArtifact   = $this->createMock(ArtifactService::class);
         $this->mockCheckpoint = $this->createMock(CheckpointService::class);
+        $this->mockGit        = $this->createMock(\App\Services\GitService::class);
 
         $this->mockArtifact->method('initializeRun')->willReturn('/tmp/test-run');
         $this->mockArtifact->method('getContextContent')->willReturn('# context');
 
         $contextBuilder      = new AgentContextBuilder();
         $jsonValidator       = new JsonOutputValidator();
-        $subWorkflowExecutor = new SubWorkflowExecutor($this->mockResolver, $this->mockYaml, $this->mockArtifact, $contextBuilder, $jsonValidator);
+        $subWorkflowExecutor = new SubWorkflowExecutor($this->mockResolver, $this->mockYaml, $this->mockArtifact, $contextBuilder, $jsonValidator, $this->mockGit);
 
         $this->service = new RunService(
             $this->mockResolver, $this->mockYaml, $this->mockArtifact, $this->mockCheckpoint,
-            $contextBuilder, $jsonValidator, $subWorkflowExecutor
+            $contextBuilder, $jsonValidator, $subWorkflowExecutor, $this->mockGit
         );
     }
 

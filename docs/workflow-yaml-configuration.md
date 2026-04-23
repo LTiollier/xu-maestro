@@ -87,6 +87,46 @@ agents:
 
 ---
 
+### Git Checkpoints (Auto-Commit IA)
+
+Cette fonctionnalité permet au système d'effectuer automatiquement un commit Git après chaque exécution réussie d'un agent. Le message de commit est généré par une IA en analysant les modifications (`git diff`) et le résultat de l'agent.
+
+#### Configuration Globale
+Active les checkpoints pour tous les agents du workflow.
+```yaml
+name: "Mon Workflow"
+project_path: "/app/mon-projet"
+git_checkpoints:
+  enabled: true
+  engine: "claude-code" # Optionnel, défaut: engine de l'agent
+  prompt: "Utilise la convention gitmoji." # Optionnel, défaut: gitmoji standard
+agents:
+  # ...
+```
+
+#### Configuration par Agent
+La configuration de l'agent surcharge la configuration globale.
+```yaml
+agents:
+  - id: agent-1
+    git_checkpoint: true # Utilise les réglages globaux ou par défaut
+    # OU configuration détaillée
+    git_checkpoint:
+      enabled: true
+      engine: "gemini-cli"
+      prompt: "Sois très bref."
+```
+
+#### Fonctionnement
+1. **Staging** : Exécution automatique de `git add .` dans le `project_path`.
+2. **Analyse** : Si des changements sont détectés, le système appelle l'IA pour générer un message.
+3. **Commit** : Exécution de `git commit -m "[message_généré]"`.
+4. **Feedback** : Un message d'information apparaît dans l'interface avec le contenu du commit.
+
+*Note : Le `project_path` doit être un dépôt Git valide pour que cette fonctionnalité s'active.*
+
+---
+
 ### Moteur Spécial : `sub-workflow`
 Le moteur `sub-workflow` permet de composer des workflows complexes en appelant des fichiers YAML existants.
 

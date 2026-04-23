@@ -9,7 +9,7 @@ use App\Events\AgentStatusChanged;
 use App\Events\RunError;
 use App\Exceptions\RunCancelledException;
 
-final class SubWorkflowExecutor
+class SubWorkflowExecutor
 {
     use \App\Support\SanitizesEnvCredentials;
 
@@ -19,6 +19,7 @@ final class SubWorkflowExecutor
         private readonly ArtifactService $artifactService,
         private readonly AgentContextBuilder $contextBuilder,
         private readonly JsonOutputValidator $jsonValidator,
+        private readonly GitService $gitService,
     ) {}
 
     public function execute(
@@ -80,6 +81,16 @@ final class SubWorkflowExecutor
                     );
 
                     $this->artifactService->appendAgentOutput($runPath, $prefixedId, $rawOutput);
+                    
+                    // Git Checkpoint (Auto-Commit)
+                    $this->gitService->runCheckpoint(
+                        $runId,
+                        $subWorkflow['project_path'],
+                        $subWorkflow,
+                        $subAgent,
+                        $rawOutput,
+                        $stepIndex
+                    );
                     
                     // Update iterationContext for next sub-agent in SAME iteration
                     $iterationContext .= "\n---\n## Agent: {$prefixedId}\n" . $this->sanitizeEnvCredentials($rawOutput) . "\n";

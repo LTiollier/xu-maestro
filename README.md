@@ -16,6 +16,7 @@
 - **Resilience & Checkpoints**: Error management, automatic retries (`mandatory` mode), and resumption from the last successful checkpoint.
 - **Context Isolation**: Each step enriches the shared context while maintaining clean isolation during loop iterations.
 - **Parallel Execution**: Run independent agents simultaneously using the `parallel:` block to reduce total run time.
+- **Git Checkpoints (Auto-Commit)**: Automatically commit changes after each successful agent execution with AI-generated commit messages.
 
 ---
 
@@ -105,6 +106,7 @@ agents:
 | `max_retries` | int | 0 | Number of retry attempts (if `mandatory: true`). |
 | `skippable` | bool | false | Allows the workflow to skip this agent via a signal. |
 | `interactive` | bool | false | Allows the agent to ask questions to the user. |
+| `git_checkpoint`| bool/obj | false | Enables automatic Git commits after agent success. |
 
 ### Advanced Features
 
@@ -137,6 +139,14 @@ Include another workflow file:
 ```yaml
 engine: sub-workflow
 workflow_file: another-workflow.yaml
+```
+
+#### 📦 Git Checkpoints
+Automatically commit changes after an agent finishes:
+```yaml
+git_checkpoints:
+  enabled: true
+  prompt: "Use gitmoji."
 ```
 
 #### 📂 External Prompts

@@ -1,0 +1,13 @@
+name: "Test Git Checkpoint"
+project_path: "/Users/leoelmy/Projects/test-workflow"
+git_checkpoints:
+  enabled: true
+  engine: "gemini-cli"
+  prompt: "Utilise la convention gitmoji."
+
+agents:
+  - id: tester-commit
+    engine: "gemini-cli"
+    system_prompt: "Tu es un agent de test. Crée ou modifie un fichier nommé 'GIT_CHECKPOINT_TEST.md' à la racine et écris-y l'heure actuelle. Ton but est de générer un changement qui sera commité."
+    steps:
+      - "Modifier GIT_CHECKPOINT_TEST.md"

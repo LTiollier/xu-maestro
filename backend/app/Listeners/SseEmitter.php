@@ -58,6 +58,7 @@ class SseEmitter
             'agentId'   => $event->agentId,
             'message'   => $event->message,
             'step'      => $event->step,
+            'type'      => $event->type,
             'timestamp' => now()->toIso8601String(),
         ];
 

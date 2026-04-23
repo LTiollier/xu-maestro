@@ -7,7 +7,7 @@ namespace App\Services;
 use App\Support\SanitizesEnvCredentials;
 use Illuminate\Support\Facades\File;
 
-final class ArtifactService
+class ArtifactService
 {
     use SanitizesEnvCredentials;
 

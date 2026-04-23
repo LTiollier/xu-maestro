@@ -8,7 +8,7 @@ use App\Exceptions\YamlLoadException;
 use Symfony\Component\Yaml\Exception\ParseException;
 use Symfony\Component\Yaml\Yaml;
 
-final class YamlService
+class YamlService
 {
     public function loadAll(): array
     {

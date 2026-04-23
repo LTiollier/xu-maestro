@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services;
 
-final class AgentContextBuilder
+class AgentContextBuilder
 {
     public function build(string $context, array $agent, bool $nextIsSkippable = false, array $variables = []): string
     {

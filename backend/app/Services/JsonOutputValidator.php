@@ -6,7 +6,7 @@ namespace App\Services;
 
 use App\Exceptions\InvalidJsonOutputException;
 
-final class JsonOutputValidator
+class JsonOutputValidator
 {
     public function validate(string $agentId, string $rawOutput): array
     {
