@@ -9,9 +9,9 @@ services:
       - "8000:8000"
     volumes:
       # Data directories (created automatically if missing)
-      - ./workflows:/workflows
-      - ./runs:/runs
-      - ./prompts:/prompts
+      - ${WORKFLOWS_PATH:-./workflows}:/workflows
+      - ${RUNS_PATH:-./runs}:/runs
+      - ${PROMPTS_PATH:-./prompts}:/prompts
       # Persistent SQLite database (using bind mount for easier permission management)
       - ./backend/database:/app/database
       # Mount your home directory at the same absolute path so that:
@@ -20,6 +20,10 @@ services:
       - ${HOME}:${HOME}
     environment:
       PHP_CLI_SERVER_WORKERS: 4
+      # Inside the container, we ALWAYS point to the fixed mount points
+      WORKFLOWS_PATH: /workflows
+      RUNS_PATH: /runs
+      PROMPTS_PATH: /prompts
       # Set container HOME = host HOME so CLI tools find their config files
       HOME: ${HOME}
       # Claude Code OAuth token (generate with: claude setup-token)

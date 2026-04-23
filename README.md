@@ -64,7 +64,7 @@
    ```bash
    cp backend/.env.example backend/.env
    ```
-   *Note: Ensure you fill in `CLAUDE_CODE_OAUTH_TOKEN` if you plan to use Claude.*
+   *Note: Ensure you fill in `CLAUDE_CODE_OAUTH_TOKEN` if you plan to use Claude. You can also customize your data paths (workflows, runs, prompts) here.*
 
 3. **Launch via Docker**:
    Use the provided Makefile to build and start the services.
@@ -170,9 +170,23 @@ system_prompt_file: "expert-dev.md"
 
 - `backend/`: Laravel API (Execution engine, process management, SSE).
 - `frontend/`: Next.js Dashboard (Real-time visualization, run management).
-- `workflows/`: Directory for YAML configuration files.
-- `prompts/`: Directory for system prompt templates.
-- `runs/`: History and artifacts of executions.
+- `workflows/`: Default directory for YAML configuration files.
+- `prompts/`: Default directory for system prompt templates.
+- `runs/`: Default directory for history and artifacts of executions.
+
+---
+
+## ⚙️ Customization
+
+You can customize the locations of your data directories by setting the following environment variables in your root `.env` or `backend/.env` file:
+
+| Variable | Description | Default |
+| :--- | :--- | :--- |
+| `WORKFLOWS_PATH` | Path to YAML workflows | `./workflows` |
+| `RUNS_PATH` | Path to execution artifacts | `./runs` |
+| `PROMPTS_PATH` | Path to prompt templates | `./prompts` |
+
+Inside Docker, these variables control which host directory is mounted. The backend will automatically adapt to these paths.
 
 ---
 
