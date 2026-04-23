@@ -2,11 +2,12 @@
 
 import React, { useMemo } from 'react'
 import dynamic from 'next/dynamic'
-import { Terminal as TerminalIcon, Loader2 } from 'lucide-react'
+import { Terminal as TerminalIcon, Loader2, Play, Pause } from 'lucide-react'
 import type { AgentState, RunStatus } from '@/types/run.types'
 import type { Workflow } from '@/types/workflow.types'
 import { isParallelGroup } from '@/types/workflow.types'
 import { ErrorBanner } from './ErrorBanner'
+import { cn } from '@/lib/utils'
 
 const QuestionInteraction = dynamic(
   () => import('@/components/QuestionInteraction'),
@@ -125,6 +126,8 @@ interface LogViewerProps {
   onRetry: () => void
   bottomRef: React.RefObject<HTMLDivElement | null>
   scrollRef: React.RefObject<HTMLDivElement | null>
+  autoScroll: boolean
+  onAutoScrollChange: (value: boolean) => void
 }
 
 export function LogViewer({
@@ -143,6 +146,8 @@ export function LogViewer({
   onRetry,
   bottomRef,
   scrollRef,
+  autoScroll,
+  onAutoScrollChange,
 }: LogViewerProps) {
   const completedNames = useMemo(() => {
     const names = new Set<string>()
@@ -188,63 +193,94 @@ export function LogViewer({
   }, [agentStatuses, completedNames, selectedWorkflow])
 
   return (
-    <div className="flex-1 overflow-y-auto font-mono text-[13px] p-6 custom-scrollbar" ref={scrollRef}>
-      <div className="max-w-4xl mx-auto flex flex-col gap-8">
+    <div className="flex-1 relative overflow-hidden group">
+      <div 
+        className="absolute inset-0 overflow-y-auto font-mono text-[13px] p-6 custom-scrollbar" 
+        ref={scrollRef}
+      >
+        <div className="max-w-4xl mx-auto flex flex-col gap-8">
 
-        {logSteps.length > 0 ? (
-          logSteps.map((step, i) => {
+          {logSteps.length > 0 ? (
+            logSteps.map((step, i) => {
+              if (step.type === 'parallel') {
+                return (
+                  <div key={i} className="pl-3 border-l-2 border-violet-500/30 flex flex-col gap-3">
+                    <div className="grid grid-cols-2 gap-6">
+                      {step.agents.map((agent, j) => (
+                        <CompletedAgentBlock key={j} {...agent} />
+                      ))}
+                    </div>
+                  </div>
+                )
+              }
+              return <CompletedAgentBlock key={i} name={step.name} output={step.output} />
+            })
+          ) : !runId ? EMPTY_STATE : null}
+
+          {liveSteps.map((step, i) => {
             if (step.type === 'parallel') {
               return (
                 <div key={i} className="pl-3 border-l-2 border-violet-500/30 flex flex-col gap-3">
                   <div className="grid grid-cols-2 gap-6">
-                    {step.agents.map((agent, j) => (
-                      <CompletedAgentBlock key={j} {...agent} />
+                    {step.ids.map(id => (
+                      <LiveAgentBlock key={id} id={id} liveLogLine={agentStatuses[id].liveLogLine} />
                     ))}
                   </div>
                 </div>
               )
             }
-            return <CompletedAgentBlock key={i} name={step.name} output={step.output} />
-          })
-        ) : !runId ? EMPTY_STATE : null}
-
-        {liveSteps.map((step, i) => {
-          if (step.type === 'parallel') {
             return (
-              <div key={i} className="pl-3 border-l-2 border-violet-500/30 flex flex-col gap-3">
-                <div className="grid grid-cols-2 gap-6">
-                  {step.ids.map(id => (
-                    <LiveAgentBlock key={id} id={id} liveLogLine={agentStatuses[id].liveLogLine} />
-                  ))}
-                </div>
-              </div>
+              <LiveAgentBlock
+                key={step.id}
+                id={step.id}
+                liveLogLine={agentStatuses[step.id].liveLogLine}
+              />
             )
-          }
-          return (
-            <LiveAgentBlock
-              key={step.id}
-              id={step.id}
-              liveLogLine={agentStatuses[step.id].liveLogLine}
+          })}
+
+          {waitingAgent && waitingAgentId && (
+            <QuestionInteraction
+              agentId={waitingAgentId}
+              question={waitingAgent.question}
+              answer={answer}
+              isAnswering={isAnswering}
+              onAnswerChange={onAnswerChange}
+              onSend={onSend}
             />
-          )
-        })}
+          )}
 
-        {waitingAgent && waitingAgentId && (
-          <QuestionInteraction
-            agentId={waitingAgentId}
-            question={waitingAgent.question}
-            answer={answer}
-            isAnswering={isAnswering}
-            onAnswerChange={onAnswerChange}
-            onSend={onSend}
-          />
-        )}
+          {status === 'error' && (
+            <ErrorBanner errorMessage={errorMessage} onRetry={onRetry} />
+          )}
 
-        {status === 'error' && (
-          <ErrorBanner errorMessage={errorMessage} onRetry={onRetry} />
-        )}
+          <div ref={bottomRef} className="h-20" />
+        </div>
+      </div>
 
-        <div ref={bottomRef} className="h-20" />
+      {/* Auto-scroll toggle button */}
+      <div className="absolute bottom-6 right-6 z-10">
+        <button
+          onClick={() => onAutoScrollChange(!autoScroll)}
+          className={cn(
+            "flex items-center gap-2 px-3 py-1.5 rounded-full border text-[11px] font-bold uppercase tracking-wider transition-all duration-200 shadow-lg",
+            autoScroll 
+              ? "bg-blue-500/10 border-blue-500/20 text-blue-400 hover:bg-blue-500/20 hover:border-blue-500/40" 
+              : "bg-zinc-900 border-zinc-800 text-zinc-500 hover:text-zinc-400 hover:border-zinc-700"
+          )}
+          title={autoScroll ? "Pause auto-scroll" : "Resume auto-scroll"}
+        >
+          {autoScroll ? (
+            <>
+              <Pause className="w-3 h-3" />
+              <span>Auto-scroll ON</span>
+            </>
+          ) : (
+            <>
+              <Play className="w-3 h-3" />
+              <span>Auto-scroll OFF</span>
+            </>
+          )}
+        </button>
       </div>
     </div>
   )

@@ -28,6 +28,8 @@ export function Terminal() {
   const [answer, setAnswer] = useState('')
   const [isAnswering, setIsAnswering] = useState(false)
 
+  const [autoScroll, setAutoScroll] = useState(true)
+
   const scrollRef = useRef<HTMLDivElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
 
@@ -64,10 +66,10 @@ export function Terminal() {
   }, [status, agentStatuses, selectedWorkflow])
 
   useEffect(() => {
-    if (status === 'running') {
+    if (status === 'running' && autoScroll) {
       bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
     }
-  }, [logChunks, status, waitingAgentId])
+  }, [logChunks, status, waitingAgentId, autoScroll])
 
   const handleLancer = useCallback(async () => {
     if (!selectedWorkflow || !brief.trim() || isSubmitting) return
@@ -197,6 +199,8 @@ export function Terminal() {
         onRetry={handleRetry}
         bottomRef={bottomRef}
         scrollRef={scrollRef}
+        autoScroll={autoScroll}
+        onAutoScrollChange={setAutoScroll}
       />
       <RunInputForm
         brief={brief}
