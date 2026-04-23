@@ -307,6 +307,7 @@ YAML);
         $this->mock(WorkflowScaffolderService::class)
              ->shouldReceive('scaffold')
              ->once()
+             ->with('A valid brief that is long enough to pass validation', 'gemini-cli', null)
              ->andReturn([
                  'yaml'   => $yaml,
                  'parsed' => [
@@ -321,6 +322,34 @@ YAML);
         $response->assertStatus(200);
         $response->assertJsonStructure(['yaml', 'parsed']);
         $response->assertJsonPath('parsed.name', 'Test Workflow');
+    }
+
+    #[Test]
+    public function generate_with_current_yaml_passes_it_to_scaffolder(): void
+    {
+        $currentYaml = "name: Old Workflow\nproject_path: .\nagents: []";
+        $newYaml = "name: New Workflow\nproject_path: .\nagents: []";
+
+        $this->mock(WorkflowScaffolderService::class)
+             ->shouldReceive('scaffold')
+             ->once()
+             ->with('Refine this please', 'gemini-cli', $currentYaml)
+             ->andReturn([
+                 'yaml'   => $newYaml,
+                 'parsed' => [
+                     'name'         => 'New Workflow',
+                     'project_path' => '.',
+                     'agents'       => [],
+                 ],
+             ]);
+
+        $response = $this->postJson('/api/workflows/generate', [
+            'brief'        => 'Refine this please',
+            'current_yaml' => $currentYaml,
+        ]);
+
+        $response->assertStatus(200);
+        $response->assertJsonPath('parsed.name', 'New Workflow');
     }
 
     #[Test]

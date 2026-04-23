@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services;
 
 use App\Drivers\DriverResolver;
+use App\Events\AgentBubble;
 use App\Events\AgentStatusChanged;
 use App\Events\RunError;
 use App\Exceptions\RunCancelledException;

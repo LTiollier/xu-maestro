@@ -16,8 +16,9 @@ final class GenerateWorkflowRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'brief'  => ['required', 'string', 'min:10'],
-            'engine' => ['sometimes', 'string', 'in:gemini-cli,claude-code'],
+            'brief'        => ['required', 'string', 'min:10'],
+            'engine'       => ['sometimes', 'string', 'in:gemini-cli,claude-code'],
+            'current_yaml' => ['sometimes', 'nullable', 'string'],
         ];
     }
 }

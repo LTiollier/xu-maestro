@@ -22,15 +22,16 @@ class WorkflowScaffolderService
      *
      * @throws ScaffoldException
      */
-    public function scaffold(string $brief, string $engine = 'gemini-cli'): array
+    public function scaffold(string $brief, string $engine = 'gemini-cli', ?string $currentYaml = null): array
     {
         $driver  = $this->resolver->for($engine);
-        $rawYaml = $driver->prompt($this->buildSystemPrompt(), $brief);
+        $rawYaml = $driver->prompt($this->buildSystemPrompt($currentYaml), $brief);
         $rawYaml = $this->stripFences($rawYaml);
 
         try {
             $parsed = Yaml::parse($rawYaml);
         } catch (ParseException $e) {
+            logger()->error("YAML généré malformé\nErreur : {$e->getMessage()}\nYAML :\n" . substr($rawYaml, 0, 2000));
             throw new ScaffoldException('YAML invalide : ' . $e->getMessage(), $rawYaml);
         }
 
@@ -40,16 +41,38 @@ class WorkflowScaffolderService
         }
 
         if (! $this->yamlService->validate($parsed)) {
+            logger()->error("Structure de workflow générée invalide\nYAML :\n" . substr($rawYaml, 0, 2000));
             throw new ScaffoldException('Structure de workflow invalide', $rawYaml);
         }
 
         return ['yaml' => $rawYaml, 'parsed' => $parsed];
     }
 
-    private function buildSystemPrompt(): string
+    private function buildSystemPrompt(?string $currentYaml = null): string
     {
         $docPath       = base_path('../docs/workflow-yaml-configuration.md');
-        $documentation = is_readable($docPath) ? (string) file_get_contents($docPath) : '';
+        $documentation = '';
+        if (is_file($docPath) && is_readable($docPath)) {
+            $content = file_get_contents($docPath);
+            if ($content !== false) {
+                $documentation = $content;
+            }
+        }
+
+        $refinementContext = '';
+        if ($currentYaml) {
+            $refinementContext = <<<CONTEXT
+
+### CURRENT YAML WORKFLOW:
+You MUST modify the existing YAML provided below according to the user's instructions.
+Keep as much of the original structure as possible unless instructed otherwise.
+Return the FULL updated YAML.
+
+```yaml
+{$currentYaml}
+```
+CONTEXT;
+        }
 
         return <<<PROMPT
 You are a YAML workflow generator for the "XuMaestro" system.
@@ -60,6 +83,7 @@ Respond with ONLY a valid YAML block. No explanation, no prose, no markdown fenc
 2. DO NOT use `phases` or `tasks`. Use `agents` instead.
 3. Each agent MUST have `id`, `engine` (gemini-cli or claude-code), and `steps` (array of strings).
 4. `project_path` should be "." if not specified.
+5. Configuration keys like `skippable`, `mandatory`, `timeout`, `interactive` MUST be top-level keys of the agent object, NOT inside the `steps` array.
 
 ### EXAMPLE OF VALID STRUCTURE:
 ```yaml
@@ -79,6 +103,7 @@ agents:
 
 ### DOCUMENTATION:
 {$documentation}
+{$refinementContext}
 
 ### GOAL:
 Generate a valid YAML workflow for the following request:

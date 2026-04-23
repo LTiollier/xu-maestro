@@ -20,10 +20,13 @@ fi
 
 # Ensure SQLite DB exists
 mkdir -p database
-touch database/database.sqlite
+if [ ! -f database/database.sqlite ]; then
+    touch database/database.sqlite
+fi
 
 # Ensure storage/cache is writable
-chmod -R 775 storage bootstrap/cache 2>/dev/null || true
+# (Already handled by chown in Dockerfile, but keeping for safety if volumes are mounted)
+mkdir -p storage/framework/{sessions,views,cache} storage/logs bootstrap/cache
 
 # Run migrations
 php artisan migrate --force --no-interaction

@@ -4,6 +4,7 @@ services:
   backend:
     build:
       context: ./backend
+    user: "1000:1000"
     ports:
       - "8000:8000"
     volumes:
@@ -11,8 +12,8 @@ services:
       - ./workflows:/workflows
       - ./runs:/runs
       - ./prompts:/prompts
-      # Persistent SQLite database
-      - backend_db:/app/database
+      # Persistent SQLite database (using bind mount for easier permission management)
+      - ./backend/database:/app/database
       # Mount your home directory at the same absolute path so that:
       #   - any workflow project_path (e.g. /Users/you/Projects/foo) is accessible
       #   - CLI auth configs (~/.gemini, ~/.claude, ~/.config) work out of the box
@@ -29,6 +30,7 @@ services:
   frontend:
     build:
       context: ./frontend
+    user: "1000:1000"
     ports:
       - "3000:3000"
     environment:
@@ -39,6 +41,3 @@ services:
     depends_on:
       - backend
     restart: unless-stopped
-
-volumes:
-  backend_db:

@@ -34,13 +34,34 @@ final class WorkflowController extends Controller
         try {
             $result = $this->scaffolder->scaffold(
                 $request->validated('brief'),
-                $request->validated('engine', 'gemini-cli')
+                $request->validated('engine', 'gemini-cli'),
+                $request->validated('current_yaml')
             );
         } catch (ScaffoldException $e) {
             return response()->json([
                 'error'    => $e->getMessage(),
                 'raw_yaml' => $e->rawYaml,
             ], 422);
+        } catch (CliExecutionException $e) {
+            logger()->error('Workflow generation CLI failure', [
+                'engine' => $request->validated('engine'),
+                'error'  => $e->getMessage(),
+                'stderr' => $e->stderr,
+            ]);
+
+            return response()->json([
+                'error'  => "Erreur lors de l'appel à l'IA : " . $e->getMessage(),
+                'stderr' => $e->stderr,
+            ], 502);
+        } catch (\Throwable $e) {
+            logger()->error('Workflow generation unexpected failure', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'error' => "Une erreur inattendue est survenue : " . $e->getMessage(),
+            ], 500);
         }
 
         return response()->json($result);

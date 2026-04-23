@@ -33,27 +33,13 @@ interface GenerateResponse {
   raw_yaml?: string
 }
 
-function resetFormState() {
-  return {
-    step: 1 as Step,
-    brief: '',
-    engine: 'gemini-cli',
-    yamlContent: '',
-    filename: '',
-    generateError: '',
-    storeError: '',
-    isGenerating: false,
-    isStoring: false,
-    showOverwriteConfirm: false,
-  }
-}
-
 export function WorkflowWizard({ open, onOpenChange }: WorkflowWizardProps) {
   const { addWorkflow } = useWorkflowStore()
   const abortRef = useRef<AbortController | null>(null)
 
   const [step, setStep] = useState<Step>(1)
   const [brief, setBrief] = useState('')
+  const [refineBrief, setRefineBrief] = useState('')
   const [engine, setEngine] = useState('gemini-cli')
   const [yamlContent, setYamlContent] = useState('')
   const [filename, setFilename] = useState('')
@@ -64,17 +50,17 @@ export function WorkflowWizard({ open, onOpenChange }: WorkflowWizardProps) {
   const [showOverwriteConfirm, setShowOverwriteConfirm] = useState(false)
 
   const resetState = () => {
-    const s = resetFormState()
-    setStep(s.step)
-    setBrief(s.brief)
-    setEngine(s.engine)
-    setYamlContent(s.yamlContent)
-    setFilename(s.filename)
-    setGenerateError(s.generateError)
-    setStoreError(s.storeError)
-    setIsGenerating(s.isGenerating)
-    setIsStoring(s.isStoring)
-    setShowOverwriteConfirm(s.showOverwriteConfirm)
+    setStep(1)
+    setBrief('')
+    setRefineBrief('')
+    setEngine('gemini-cli')
+    setYamlContent('')
+    setFilename('')
+    setGenerateError('')
+    setStoreError('')
+    setIsGenerating(false)
+    setIsStoring(false)
+    setShowOverwriteConfirm(false)
   }
 
   const handleOpenChange = (isOpen: boolean) => {
@@ -85,7 +71,7 @@ export function WorkflowWizard({ open, onOpenChange }: WorkflowWizardProps) {
     onOpenChange(isOpen)
   }
 
-  const handleGenerate = async () => {
+  const handleGenerate = async (isRefine = false) => {
     abortRef.current?.abort()
     abortRef.current = new AbortController()
 
@@ -96,7 +82,11 @@ export function WorkflowWizard({ open, onOpenChange }: WorkflowWizardProps) {
       const res = await fetch('/api/workflows/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ brief, engine }),
+        body: JSON.stringify({
+          brief: isRefine ? refineBrief : brief,
+          engine,
+          ...(isRefine ? { current_yaml: yamlContent } : {}),
+        }),
         signal: abortRef.current.signal,
       })
 
@@ -105,6 +95,7 @@ export function WorkflowWizard({ open, onOpenChange }: WorkflowWizardProps) {
       if (res.ok) {
         setYamlContent(data.yaml)
         setGenerateError('')
+        setRefineBrief('')
         setStep(2)
       } else {
         // On 422: advance to step 2 with raw_yaml in textarea + show error
@@ -246,8 +237,35 @@ export function WorkflowWizard({ open, onOpenChange }: WorkflowWizardProps) {
               className="w-full min-h-[240px] rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-200 text-xs font-mono px-3 py-2 resize-y focus:outline-none focus:ring-1 focus:ring-zinc-500"
               value={yamlContent}
               onChange={(e) => setYamlContent(e.target.value)}
-              disabled={isStoring}
+              disabled={isStoring || isGenerating}
             />
+
+            <div className="flex flex-col gap-2 p-3 rounded-lg bg-zinc-900/50 border border-zinc-800">
+              <label className="text-[10px] uppercase tracking-wider text-zinc-500 font-bold">Affiner avec l&apos;IA</label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  className="flex-1 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-200 text-sm px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-zinc-500 placeholder:text-zinc-600"
+                  placeholder="Ex: Ajoute un agent de documentation..."
+                  value={refineBrief}
+                  onChange={(e) => setRefineBrief(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && refineBrief.trim().length >= 3 && !isGenerating) {
+                      handleGenerate(true)
+                    }
+                  }}
+                  disabled={isStoring || isGenerating}
+                />
+                <Button
+                  onClick={() => handleGenerate(true)}
+                  disabled={isGenerating || isStoring || refineBrief.trim().length < 3}
+                  size="sm"
+                  className="bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 h-9"
+                >
+                  {isGenerating ? '…' : 'Affiner'}
+                </Button>
+              </div>
+            </div>
 
             <div className="flex flex-col gap-1">
               <label className="text-xs text-zinc-400">Nom du fichier</label>
@@ -296,7 +314,7 @@ export function WorkflowWizard({ open, onOpenChange }: WorkflowWizardProps) {
         <DialogFooter className="bg-zinc-900 border-t border-zinc-800">
           {step === 1 && (
             <Button
-              onClick={handleGenerate}
+              onClick={() => handleGenerate(false)}
               disabled={isGenerating || brief.trim().length < 10}
               className="bg-zinc-700 hover:bg-zinc-600 text-zinc-100"
             >
@@ -306,7 +324,7 @@ export function WorkflowWizard({ open, onOpenChange }: WorkflowWizardProps) {
           {step === 2 && !showOverwriteConfirm && (
             <Button
               onClick={() => handleStore(false)}
-              disabled={isStoring || !filename.trim() || !yamlContent.trim()}
+              disabled={isStoring || isGenerating || !filename.trim() || !yamlContent.trim()}
               className="bg-zinc-700 hover:bg-zinc-600 text-zinc-100"
             >
               {isStoring ? 'Création…' : 'Créer'}

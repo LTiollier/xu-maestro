@@ -29,9 +29,11 @@ class YamlService
                     $workflows[] = $data;
                 }
             } catch (ParseException $e) {
-                logger()->warning("YAML malformé ignoré : {$filePath}", ['error' => $e->getMessage()]);
+                $content = file_get_contents($filePath) ?: '(impossible de lire le fichier)';
+                logger()->warning("YAML malformé ignoré : {$filePath}\nErreur : {$e->getMessage()}\nContenu :\n{$content}");
             } catch (\Throwable $e) {
-                logger()->warning("Workflow illisible ignoré : {$filePath}", ['error' => $e->getMessage()]);
+                $content = file_exists($filePath) ? (file_get_contents($filePath) ?: '(vide)') : '(inexistant)';
+                logger()->warning("Workflow illisible ignoré : {$filePath}\nErreur : {$e->getMessage()}\nContenu :\n{$content}");
             }
         }
 
