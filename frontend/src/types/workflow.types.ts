@@ -3,6 +3,15 @@ export interface Agent {
   engine: string
   timeout: number
   steps: string[]
+  mandatory?: boolean
+  max_retries?: number
+  skippable?: boolean
+  interactive?: boolean
+  system_prompt?: string
+  loop?: {
+    over: string
+    as: string
+  }
 }
 
 export interface ParallelGroup {

@@ -19,14 +19,12 @@ import { isParallelGroup, countAgents } from '@/types/workflow.types'
 import { WorkflowWizard } from './WorkflowWizard'
 
 const AgentSidebarItemConnected = React.memo(function AgentSidebarItemConnected({
-  agentId,
-  engine,
+  agent,
 }: {
-  agentId: string
-  engine: string
+  agent: any // We'll use any here for simplicity in this bridge component, but it's type-safe from the caller
 }) {
-  const status = useAgentStatusStore((s): AgentStatus => s.agents[agentId]?.status ?? 'idle')
-  return <AgentSidebarItem id={agentId} engine={engine} status={status} />
+  const status = useAgentStatusStore((s): AgentStatus => s.agents[agent.id]?.status ?? 'idle')
+  return <AgentSidebarItem agent={agent} status={status} />
 })
 
 export function Sidebar() {
@@ -112,13 +110,13 @@ export function Sidebar() {
                     title="Agents parallèles"
                   >
                     {step.parallel.map((agent) => (
-                      <AgentSidebarItemConnected key={agent.id} agentId={agent.id} engine={agent.engine} />
+                      <AgentSidebarItemConnected key={agent.id} agent={agent} />
                     ))}
                   </div>
                 )
               }
               return (
-                <AgentSidebarItemConnected key={step.id} agentId={step.id} engine={step.engine} />
+                <AgentSidebarItemConnected key={step.id} agent={step} />
               )
             })}
           </>
